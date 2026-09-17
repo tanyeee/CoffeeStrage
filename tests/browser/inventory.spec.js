@@ -78,7 +78,9 @@ test('menu presets fill an editable name and the requested copy is shown',async(
   await page.getByRole('radio',{name:'3',exact:true}).check();
   await page.getByRole('button',{name:'登録',exact:true}).click();
   await expect(page.locator('.bean-card')).toContainText('ブラジル｜キャラメラード（別袋）');
-  await page.locator('.bean-card').click();await page.getByRole('link',{name:'編集',exact:true}).click();
+  await page.locator('.bean-card').click();
+  await expect(page.locator('.detail-age')).toHaveText('0日');
+  await page.getByRole('link',{name:'編集',exact:true}).click();
   await expect(page.getByLabel('豆名',{exact:true})).toHaveValue('ブラジル｜キャラメラード（別袋）');
   await page.getByLabel('プリセットから選ぶ').selectOption({label:'ケニア｜マサイ AA'});
   await page.getByRole('button',{name:'保存',exact:true}).click();
