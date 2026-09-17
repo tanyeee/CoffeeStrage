@@ -9,7 +9,7 @@ async function seed(page){
 }
 test('filter thresholds and preset CRUD leave stored bean names independent',async({page})=>{
  await seed(page);
- for(const [label,count] of [['1ヶ月〜',4],['半年〜',2],['すべて',6]]){
+ for(const [label,count] of [['1ヶ月以上',4],['半年以上',2],['全期間',6]]){
   await page.getByRole('button',{name:label,exact:true}).click();await expect(page.locator('.bean-card')).toHaveCount(count);
  }
  await page.getByRole('link',{name:'設定',exact:true}).click();await page.getByRole('link',{name:'プリセットを管理'}).click();
@@ -33,6 +33,6 @@ test('JSON download, confirmation, full restore and invalid file rejection',asyn
  await page.locator('#import-json').setInputFiles({name:'backup.json',mimeType:'application/json',buffer:bytes});await page.getByRole('button',{name:'全データを置き換えて復元'}).click();await expect(page.getByRole('heading',{name:'設定',exact:true})).toBeVisible();
  await page.locator('#import-json').setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from('{')});await expect(page.getByRole('alert')).toContainText('JSONファイルを読み込めませんでした');
  await page.getByRole('link',{name:'在庫',exact:true}).click();await expect(page.locator('.bean-card')).toHaveCount(6);
- await page.getByRole('button',{name:'半年〜',exact:true}).click();await expect(page.locator('.bean-card')).toHaveCount(2);await expect(page.getByText('該当 2 / 6袋 · 半年以上')).toBeVisible();
+ await page.getByRole('button',{name:'半年以上',exact:true}).click();await expect(page.locator('.bean-card')).toHaveCount(2);await expect(page.getByText('該当 2 / 6袋 · 半年以上')).toBeVisible();
  await page.screenshot({path:'test-results/stage2-mobile.png',fullPage:true});
 });

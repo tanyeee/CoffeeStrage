@@ -12,7 +12,7 @@ const repository = createRepository({ onBlocked: () => announce('別のCoffee Ce
 let viewMode = 'grouped', disposeDrag = () => {};
 let filterMonths = 0, pendingBackup = null;
 const viewModes = [['grouped', '豆別'], ['oldest', '古い順'], ['newest', '新しい順']];
-const filters = [[0, 'すべて'], [1, '1ヶ月〜'], [6, '半年〜']];
+const filters = [[0, '全期間'], [1, '1ヶ月以上'], [6, '半年以上']];
 let route = '', formBaseline = '', busy = false, renderId = 0, noticeTimer, midnightTimer;
 const scrollPositions = new Map();
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -75,7 +75,7 @@ function listView(beans, archived, presets = []) {
   if(!archived && viewMode==='newest')collection.reverse();
   navigation(archived ? 'archive' : 'inventory');
   app.innerHTML = heading(archived ? '飲み終わった豆' : '現在の貯蔵数', archived ? 'YOUR COFFEE HISTORY' : 'IN YOUR CELLAR', `<span class="count"><strong>${total.length}</strong>袋</span>`)
-    + (archived ? '' : `<div class="list-controls"><div class="filters" role="group" aria-label="保管期間">${filters.map(([months,label])=>`<button class="secondary" data-filter="${months}" aria-pressed="${filterMonths===months}">${label}</button>`).join('')}</div><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewModes.map(([mode,label])=>`<option value="${mode}" ${viewMode===mode?'selected':''}>${label}</option>`).join('')}</select></label></div>${filterMonths?`<p class="hint">該当 ${collection.length} / ${total.length}袋 · ${filters.find(([m])=>m===filterMonths)[1].replace('〜','以上')}</p>`:''}`)
+    + (archived ? '' : `<div class="list-controls"><div class="filters" role="group" aria-label="保管期間">${filters.map(([months,label])=>`<button class="secondary" data-filter="${months}" aria-pressed="${filterMonths===months}">${label}</button>`).join('')}</div><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewModes.map(([mode,label])=>`<option value="${mode}" ${viewMode===mode?'selected':''}>${label}</option>`).join('')}</select></label></div>${filterMonths?`<p class="hint">該当 ${collection.length} / ${total.length}袋 · ${filters.find(([m])=>m===filterMonths)[1]}</p>`:''}`)
     + (collection.length ? `<div class="bean-list">${!archived&&viewMode==='grouped'?groupBeans(collection,presets).map(groupCard).join(''):collection.map(bean => card(bean, archived)).join('')}</div>`
       : `<section class="empty"><span class="empty-symbol" aria-hidden="true">◒</span><h2>${archived ? 'まだ履歴はありません' : filterMonths ? 'この期間の豆はありません' : '最初のひと袋を、セラーへ。'}</h2><p>${archived ? '飲み終わった豆は、ここに記録として残ります。' : filterMonths ? '「すべて」を選ぶと全在庫を表示します。' : '豆の名前と焙煎日を記録して、熟成の時間を見守りましょう。'}</p>${archived ? '' : link('/beans/new', '＋ 豆を追加', 'button primary')}</section>`)
     + (!archived && collection.length ? link('/beans/new', '<span aria-hidden="true">＋</span> 豆を追加', 'button primary add-bar') : '');
