@@ -19,20 +19,30 @@ function dayNumber(value) {
   return date.getTime() / DAY;
 }
 export function ageDays(start, end = today()) { return dayNumber(end) - dayNumber(start); }
-export function ageLabel(start, end = today()) {
-  if (ageDays(start, end) < 0) return '焙煎日を確認';
+function addMonths(p, months) {
+  const index = p.year * 12 + p.month - 1 + months;
+  const year = Math.floor(index / 12), month = index % 12 + 1;
+  return `${String(year).padStart(4,'0')}-${String(month).padStart(2,'0')}-${String(Math.min(p.day,monthDays(year,month))).padStart(2,'0')}`;
+}
+// Completed calendar months; a missing day (e.g. 31st) falls back to the month end.
+export function elapsedMonths(start, end = today()) {
+  if (ageDays(start, end) < 0) return -1;
   const a = parseDate(start), b = parseDate(end);
-  let months = (b.year - a.year) * 12 + b.month - a.month;
-  if (b.day < Math.min(a.day, monthDays(b.year, b.month))) months--;
+  const months = (b.year - a.year) * 12 + b.month - a.month;
+  return b.day < Math.min(a.day, monthDays(b.year, b.month)) ? months - 1 : months;
+}
+// Under 1 month: days. Under 1 year: months floored to 0.1 (7.5ヶ月). Otherwise: 1年8ヶ月.
+export function ageLabel(start, end = today()) {
+  const months = elapsedMonths(start, end);
+  if (months < 0) return '焙煎日を確認';
+  if (months === 0) return `${ageDays(start, end)}日`;
   if (months < 12) {
-    const monthIndex = a.year * 12 + a.month - 1 + months;
-    const year = Math.floor(monthIndex / 12), month = monthIndex % 12 + 1;
-    const anniversary = `${String(year).padStart(4,'0')}-${String(month).padStart(2,'0')}-${String(Math.min(a.day,monthDays(year,month))).padStart(2,'0')}`;
-    const days = ageDays(anniversary,end);
-    return months ? `${months}か月${days ? `${days}日` : ''}` : `${days}日`;
+    const a = parseDate(start), anniversary = addMonths(a, months);
+    const tenths = months * 10 + Math.floor(ageDays(anniversary, end) * 10 / ageDays(anniversary, addMonths(a, months + 1)));
+    return `${(tenths / 10).toFixed(1)}ヶ月`;
   }
   const years = Math.floor(months / 12), rest = months % 12;
-  return years ? `${years}年${rest ? `${rest}か月` : ''}` : `${rest}か月`;
+  return `${years}年${rest ? `${rest}ヶ月` : ''}`;
 }
 export function dateLabel(value) { return value.replaceAll('-', '/'); }
 export function sortBeans(beans, archived = false) {

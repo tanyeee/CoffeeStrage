@@ -3,14 +3,16 @@ import { bindReorder } from './reorder.js';
 import { initializePWA, pwaStatus } from './pwa.js';
 import { parseBackup, serializeBackup, serializeCSV, counts } from './backup.js';
 import { createRepository } from './db.js';
-import { today, ageDays, ageLabel, dateLabel, compactDate, sortBeans } from './dates.js';
+import { today, ageDays, elapsedMonths, ageLabel, dateLabel, compactDate, sortBeans } from './dates.js';
 import { validateBean, roastLabel, ValidationError } from './validation.js';
 
 const app = document.querySelector('#app'), nav = document.querySelector('#nav');
 const notice = document.querySelector('#notice');
 const repository = createRepository({ onBlocked: () => announce('別のCoffee Cellar画面を閉じてください。'), onVersionChange: () => announce('アプリが更新されました。画面を再読み込みしてください。') });
 let viewMode = 'grouped', disposeDrag = () => {};
-let filterDays = 0, pendingBackup = null;
+let filterMonths = 0, pendingBackup = null;
+const viewModes = [['grouped', '豆別'], ['oldest', '古い順'], ['newest', '新しい順']];
+const filters = [[0, 'すべて'], [1, '1ヶ月〜'], [6, '半年〜']];
 let route = '', formBaseline = '', busy = false, renderId = 0, noticeTimer, midnightTimer;
 const scrollPositions = new Map();
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -49,9 +51,9 @@ window.addEventListener('hashchange', () => {
 });
 window.addEventListener('beforeunload', event => { if (dirty() || busy) { event.preventDefault(); event.returnValue = ''; } });
 
-function age(bean) {
+function age(bean, withDays = false) {
   const days = ageDays(bean.roastDate);
-  return days < 0 ? '焙煎日を確認' : `${escape(ageLabel(bean.roastDate))}<small>（${days.toLocaleString('ja-JP')}日）</small>`;
+  return days < 0 ? '焙煎日を確認' : `${escape(ageLabel(bean.roastDate))}${withDays ? `<small>（${days.toLocaleString('ja-JP')}日）</small>` : ''}`;
 }
 function roast(bean) {
   const dots = bean.roastType === 'scale' ? `<span class="roast-dots" aria-hidden="true">${[1,2,3,4,5].map(n => `<i class="${n <= bean.roastValue ? 'on' : ''}"></i>`).join('')}</span>` : '';
@@ -66,15 +68,13 @@ function groupCard(group) {
 }
 function listView(beans, archived, presets = []) {
   const total = beans.filter(b => b.status === (archived ? 'archived' : 'active'));
-  const collection = sortBeans(total.filter(b => archived || !filterDays || ageDays(b.roastDate) >= filterDays), archived);
+  const collection = sortBeans(total.filter(b => archived || !filterMonths || elapsedMonths(b.roastDate) >= filterMonths), archived);
   if(!archived && viewMode==='newest')collection.reverse();
   navigation(archived ? 'archive' : 'inventory');
   app.innerHTML = heading(archived ? '飲み終わった豆' : '現在の貯蔵数', archived ? 'YOUR COFFEE HISTORY' : 'IN YOUR CELLAR', `<span class="count"><strong>${total.length}</strong>袋</span>`)
-    + (archived ? '' : '<p class="subtitle">ゆっくりと時を重ねる、あなたのコーヒー</p>')
-    + (archived ? '' : `<div class="view-modes" aria-label="在庫の表示方法">${[['grouped','豆別まとめ'],['oldest','古い順'],['newest','新しい順']].map(([mode,label])=>`<button data-view="${mode}" aria-pressed="${viewMode===mode}">${label}</button>`).join('')}</div>`)
-    + (archived ? '' : `<div class="filters" aria-label="保管期間">${[[0,'すべて'],[180,'半年〜'],[365,'1年〜'],[548,'1年半〜']].map(([days,label])=>`<button class="secondary" data-filter="${days}" aria-pressed="${filterDays===days}">${label}</button>`).join('')}</div>${filterDays?`<p class="hint">該当 ${collection.length} / ${total.length}袋 · ${filterDays}日以上</p>`:''}`)
-    + (collection.length ? `<div class="section-label"><span>${archived ? 'ARCHIVE' : 'COLLECTION'}</span><span>${archived ? '飲み終わった順' : viewMode==='grouped'?'プリセット順・袋は古い順':viewMode==='oldest'?'焙煎日の古い順':'焙煎日の新しい順'}</span></div><div class="bean-list">${!archived&&viewMode==='grouped'?groupBeans(collection,presets).map(groupCard).join(''):collection.map(bean => card(bean, archived)).join('')}</div>`
-      : `<section class="empty"><span class="empty-symbol" aria-hidden="true">◒</span><h2>${archived ? 'まだ履歴はありません' : filterDays ? 'この期間の豆はありません' : '最初のひと袋を、セラーへ。'}</h2><p>${archived ? '飲み終わった豆は、ここに記録として残ります。' : filterDays ? '「すべて」を選ぶと全在庫を表示します。' : '豆の名前と焙煎日を記録して、熟成の時間を見守りましょう。'}</p>${archived ? '' : link('/beans/new', '＋ 豆を追加', 'button primary')}</section>`)
+    + (archived ? '' : `<div class="list-controls"><div class="filters" role="group" aria-label="保管期間">${filters.map(([months,label])=>`<button class="secondary" data-filter="${months}" aria-pressed="${filterMonths===months}">${label}</button>`).join('')}</div><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewModes.map(([mode,label])=>`<option value="${mode}" ${viewMode===mode?'selected':''}>${label}</option>`).join('')}</select></label></div>${filterMonths?`<p class="hint">該当 ${collection.length} / ${total.length}袋 · ${filters.find(([m])=>m===filterMonths)[1].replace('〜','以上')}</p>`:''}`)
+    + (collection.length ? `<div class="section-label"><span>${archived ? 'ARCHIVE' : 'COLLECTION'}</span><span>${archived ? '飲み終わった順' : ''}</span></div><div class="bean-list">${!archived&&viewMode==='grouped'?groupBeans(collection,presets).map(groupCard).join(''):collection.map(bean => card(bean, archived)).join('')}</div>`
+      : `<section class="empty"><span class="empty-symbol" aria-hidden="true">◒</span><h2>${archived ? 'まだ履歴はありません' : filterMonths ? 'この期間の豆はありません' : '最初のひと袋を、セラーへ。'}</h2><p>${archived ? '飲み終わった豆は、ここに記録として残ります。' : filterMonths ? '「すべて」を選ぶと全在庫を表示します。' : '豆の名前と焙煎日を記録して、熟成の時間を見守りましょう。'}</p>${archived ? '' : link('/beans/new', '＋ 豆を追加', 'button primary')}</section>`)
     + (!archived && collection.length ? link('/beans/new', '<span aria-hidden="true">＋</span> 豆を追加', 'button primary add-bar') : '');
 }
 function detailView(bean) {
@@ -82,7 +82,7 @@ function detailView(bean) {
   navigation(archived ? 'archive' : 'inventory');
   app.innerHTML = link(archived ? '/archive' : '/inventory', `‹ ${archived ? 'アーカイブ' : '在庫'}に戻る`, 'back')
     + `<div>${archived ? '<span class="badge">飲み終わった豆</span>' : ''}</div>` + heading(escape(bean.name), 'COFFEE DETAILS')
-    + `<p class="detail-age">${age(bean)}</p><p class="hint">焙煎から現在まで</p><section class="panel"><dl class="detail-grid">`
+    + `<p class="detail-age">${age(bean, true)}</p><p class="hint">焙煎から現在まで</p><section class="panel"><dl class="detail-grid">`
     + [['焙煎度', roastLabel(bean)], ['焙煎日', dateLabel(bean.roastDate)], ['登録日時', timeLabel(bean.createdAt)], ...(archived ? [['飲み終わり日時', timeLabel(bean.finishedAt)]] : [])].map(([label, value]) => `<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')
     + `</dl></section><div class="actions">${link(`/beans/${bean.id}/edit`, '編集', 'button secondary')}<button id="bean-action" class="${archived ? 'danger' : 'primary'}">${archived ? '完全に削除' : '飲み終わり'}</button></div><p class="error" id="action-error" role="alert"></p>`;
   document.querySelector('#bean-action').onclick = async event => {
@@ -145,7 +145,7 @@ function formView(bean, presets) {
       validateBean(input);
       busy = true; submit.disabled = true; submit.textContent = '保存中…';
       if (bean) await repository.edit(bean.id, input); else await repository.add(input);
-      if (!bean) filterDays = 0;
+      if (!bean) filterMonths = 0;
       formBaseline = ''; busy = false;
       announce(bean ? '変更を保存しました。' : 'セラーに豆を追加しました。');
       go(bean ? `/beans/${bean.id}` : '/inventory');
@@ -189,7 +189,7 @@ function settingsView() {
   app.innerHTML = heading('設定', 'YOUR CELLAR')
     + `<section class="panel"><h2>豆プリセット</h2><p class="settings-note">よく買う豆を登録して、入力を手軽に。</p>${link('/settings/presets','プリセットを管理','button secondary')}</section>
     <section class="panel"><h2>バックアップと復元</h2><p class="settings-note">在庫・アーカイブ・プリセットをまとめてJSONに保存できます。</p><div class="actions"><button class="primary" id="export-json">JSONを書き出す</button><button class="secondary" id="export-csv">CSVを書き出す</button></div><div class="field"><label for="import-json">JSONから復元</label><input type="file" id="import-json" accept=".json,application/json"><p class="hint">読み込み後に内容を確認できます。復元すると全データが置き換わります。</p></div><p id="settings-error" class="error" role="alert"></p></section>
-    <section class="panel"><h2>この端末に保存</h2><p class="settings-note">データはこの端末のブラウザ内に保存されます。別の端末へ移すときはJSONバックアップを使ってください。</p><p class="hint">期間フィルターは半年＝180日、1年＝365日、1年半＝548日以上です。</p><p class="hint">ホーム画面に追加するには、Safariの共有メニューから「ホーム画面に追加」を選んでください。初回は通信可能な状態で開き、オフライン利用の準備完了を確認してください。</p><p class="hint" data-pwa-status role="status">${escape(pwaStatus)}</p></section>`;
+    <section class="panel"><h2>この端末に保存</h2><p class="settings-note">データはこの端末のブラウザ内に保存されます。別の端末へ移すときはJSONバックアップを使ってください。</p><p class="hint">期間フィルターは焙煎日から満了した月数で判定します（例：3月17日焙煎は9月17日から半年以上）。</p><p class="hint">ホーム画面に追加するには、Safariの共有メニューから「ホーム画面に追加」を選んでください。初回は通信可能な状態で開き、オフライン利用の準備完了を確認してください。</p><p class="hint" data-pwa-status role="status">${escape(pwaStatus)}</p></section>`;
   document.querySelector('#export-csv').onclick=event=>runAction(event.target,exportCSV,document.querySelector('#settings-error'));
   document.querySelector('#export-json').onclick=event=>runAction(event.target,exportJSON,document.querySelector('#settings-error'));
   document.querySelector('#import-json').onchange=event=>{
@@ -244,7 +244,7 @@ function restoreView(current) {
     `<section class="panel"><p>現在のデータはすべて削除され、このファイルの内容に置き換わります。</p><p class="hint">ファイル作成日時：${escape(timeLabel(pendingBackup.exportedAt))}</p><table><thead><tr><th>種類</th><th>現在</th><th>復元後</th></tr></thead><tbody>${[['active','在庫'],['archived','アーカイブ'],['presets','プリセット']].map(([key,label])=>`<tr><th>${label}</th><td>${existing[key]}</td><td>${incoming[key]}</td></tr>`).join('')}</tbody></table>${future?`<p class="hint">未来の焙煎日が${future}件あります。端末の日付をご確認ください。</p>`:''}${pendingBackup.beans.length+pendingBackup.presets.length===0?'<p class="error">空のバックアップです。復元すると全データがなくなります。</p>':''}<div class="actions"><button id="before-restore" class="secondary">現在のデータを書き出す</button></div><div class="actions">${link('/settings','キャンセル','button secondary')}<button id="restore" class="danger">全データを置き換えて復元</button></div><p class="error" id="restore-error" role="alert"></p></section>`;
   document.querySelector('#before-restore').onclick=event=>runAction(event.target,exportJSON,document.querySelector('#restore-error'));
   document.querySelector('#restore').onclick=event=>runAction(event.target,async()=>{
-    await repository.replace(pendingBackup);pendingBackup=null;filterDays=0;scrollPositions.clear();formBaseline='';
+    await repository.replace(pendingBackup);pendingBackup=null;filterMonths=0;scrollPositions.clear();formBaseline='';
     busy=false;announce('バックアップを復元しました。');go('/settings');
   },document.querySelector('#restore-error'));
 }
@@ -311,6 +311,16 @@ window.addEventListener('pageshow', event => { if (event.persisted) refresh(); }
 if (!location.hash) history.replaceState(null, '', '#/inventory');
 refresh();
 
-app.addEventListener('click',event=>{const button=event.target.closest('[data-filter], [data-view]');if(button&&!busy){if(button.dataset.view)viewMode=button.dataset.view;else filterDays=Number(button.dataset.filter);render({preserve:true}).then(()=>{const attr=button.dataset.view?'data-view':'data-filter';app.querySelector(`[${attr}="${button.getAttribute(attr)}"]`)?.focus({preventScroll:true});});}});
+app.addEventListener('click', event => {
+  const button = event.target.closest('[data-filter]');
+  if (!button || busy) return;
+  filterMonths = Number(button.dataset.filter);
+  render({ preserve: true }).then(() => app.querySelector(`[data-filter="${filterMonths}"]`)?.focus({ preventScroll: true }));
+});
+app.addEventListener('change', event => {
+  if (event.target.id !== 'view-mode' || busy) return;
+  viewMode = event.target.value;
+  render({ preserve: true }).then(() => document.querySelector('#view-mode')?.focus({ preventScroll: true }));
+});
 
 initializePWA();

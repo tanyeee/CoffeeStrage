@@ -11,12 +11,12 @@ async function seed(page){
 test('grouped inventory shows one compact row per bag, switches order and follows preset renames',async({page})=>{
  await page.clock.install({time:new Date('2026-09-17T12:00:00+09:00')});await seed(page);
  await expect(page.locator('.bean-group')).toHaveCount(2);await expect(page.locator('.bean-group').first().locator('.batch-row')).toHaveCount(2);
- await expect(page.locator('.batch-age').nth(1)).toHaveText('2か月3日');await expect(page.locator('.batch-row time').first()).toHaveText('25/2/14');await expect(page.locator('.batch-roast').first()).toHaveText('2');
+ await expect(page.locator('.batch-age').nth(1)).toHaveText('2.1ヶ月');await expect(page.locator('.batch-row time').first()).toHaveText('25/2/14');await expect(page.locator('.batch-roast').first()).toHaveText('2');
  const heights=await page.locator('.batch-row').evaluateAll(rows=>rows.map(row=>row.getBoundingClientRect().height));expect(Math.max(...heights)).toBeLessThan(55);
  await page.screenshot({path:'test-results/grouped-mobile.png',fullPage:true});
- await page.getByRole('button',{name:'新しい順',exact:true}).click();await expect(page.locator('.bean-card').first()).toContainText('2026/07/14');
- await page.getByRole('button',{name:'古い順',exact:true}).click();await expect(page.locator('.bean-card').first()).toContainText('2025/02/14');
- await page.getByRole('button',{name:'豆別まとめ',exact:true}).click();await page.locator('.batch-row').nth(1).click();await expect(page.getByRole('heading',{name:'エチオピア｜イルガチェフィー',exact:true})).toBeVisible();
+ await page.getByLabel('並び順').selectOption('newest');await expect(page.locator('.bean-card').first()).toContainText('2026/07/14');
+ await page.getByLabel('並び順').selectOption('oldest');await expect(page.locator('.bean-card').first()).toContainText('2025/02/14');await expect(page.locator('.bean-card').first()).not.toContainText('日）');
+ await page.getByLabel('並び順').selectOption('grouped');await page.locator('.batch-row').nth(1).click();await expect(page.getByRole('heading',{name:'エチオピア｜イルガチェフィー',exact:true})).toBeVisible();await expect(page.locator('.detail-age')).toHaveText('2.1ヶ月（65日）');
  await page.getByRole('link',{name:'設定',exact:true}).click();await page.getByRole('link',{name:'プリセットを管理'}).click();
  await expect(page.locator('.preset-actions:visible')).toHaveCount(0);await expect(page.locator('#preset-form')).toBeHidden();
  await page.getByRole('button',{name:'エチオピア｜イルガチェフィー',exact:true}).click();await page.getByRole('button',{name:'編集',exact:true}).click();

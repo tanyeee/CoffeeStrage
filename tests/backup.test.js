@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
 import { createRepository } from '../db.js';
 import { parseBackup,serializeBackup,validateBackup } from '../backup.js';
-import { ageDays } from '../dates.js';
 const input={name:'豆「テスト」\n日本語',roastType:'custom',roastValue:null,roastCustom:'中深煎り',roastDate:'2025-01-01'};
 const make=()=>createRepository({factory:new IDBFactory()});
 test('JSON round trip preserves all stores, custom roast, archive and editable presets',async()=>{
@@ -33,11 +32,11 @@ test('empty restoration stays empty after reconnect; future dates remain restora
  const repo=make();await repo.add(input);const data=parseBackup(serializeBackup(await repo.snapshot()));data.beans[0].roastDate='9999-12-31';assert.equal(validateBackup(data).beans[0].roastDate,'9999-12-31');
  await repo.replace({...data,beans:[],presets:[]});await repo.close();assert.deepEqual(await repo.snapshot(),{beans:[],presets:[]});await repo.close();
 });
-test('filter boundaries use exact calendar days',()=>{
- for(const n of [179,180,364,365,547,548]){
-  const end=new Date('2026-09-17T00:00:00Z');end.setUTCDate(end.getUTCDate()-n);
-  assert.equal(ageDays(end.toISOString().slice(0,10),'2026-09-17'),n);
- }
+test('filter boundaries use completed calendar months',async()=>{
+ const {elapsedMonths}=await import('../dates.js');
+ for(const [start,months] of [['2026-08-18',0],['2026-08-17',1],['2026-03-18',5],['2026-03-17',6],['2026-03-31',5],['2025-09-18',11]]) assert.equal(elapsedMonths(start,'2026-09-17'),months);
+ assert.equal(elapsedMonths('2026-01-31','2026-02-27'),0);assert.equal(elapsedMonths('2026-01-31','2026-02-28'),1);
+ assert.equal(elapsedMonths('2026-09-18','2026-09-17'),-1);
 });
 
 test('CSV includes both statuses, BOM, CRLF, quoted newlines and neutralized formulas',async()=>{

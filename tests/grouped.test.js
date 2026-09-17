@@ -28,7 +28,7 @@ test('old JSON upgrades legacy aliases and new order without losing records',asy
  const upgraded=parseBackup(JSON.stringify(old));assert.equal(upgraded.beans[0].presetId,id);assert.equal(upgraded.beans[0].name,old.presets[0].name);assert.equal(upgraded.presets[0].order,0);assert.equal(old.beans[0].presetId,undefined);
 });
 test('under-year labels include remainder across leap days and clipped month ends',()=>{
- assert.equal(ageLabel('2026-07-14','2026-09-17'),'2か月3日');assert.equal(ageLabel('2026-01-31','2026-03-01'),'1か月1日');assert.equal(ageLabel('2024-02-29','2025-02-27'),'11か月29日');assert.equal(ageLabel('2024-02-29','2025-02-28'),'1年');assert.equal(compactDate('2025-02-14'),'25/2/14');
+ assert.equal(ageLabel('2026-07-14','2026-09-17'),'2.1ヶ月');assert.equal(ageLabel('2026-01-31','2026-03-01'),'1.0ヶ月');assert.equal(ageLabel('2024-02-29','2025-02-27'),'11.9ヶ月');assert.equal(ageLabel('2024-02-29','2025-02-28'),'1年');assert.equal(compactDate('2025-02-14'),'25/2/14');
 });
 test('v3 migration links names/legacy aliases and keeps unknown names unlinked',async()=>{
  const factory=new IDBFactory();const db=await new Promise(resolve=>{const r=factory.open('old',3);r.onupgradeneeded=()=>{r.result.createObjectStore('beans',{keyPath:'id'});r.result.createObjectStore('presets',{keyPath:'id'}).createIndex('name','name',{unique:true});};r.onsuccess=()=>resolve(r.result);});

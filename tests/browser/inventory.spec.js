@@ -12,13 +12,13 @@ async function add(page,name,date,custom=false) {
 test('phone-sized inventory lifecycle, persistence, cancellation, and safe rendering',async({page})=>{
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/');
-  await page.getByRole('button',{name:'古い順',exact:true}).click();
+  await page.getByLabel('並び順').selectOption('oldest');
   await expect(page.getByRole('heading',{name:'最初のひと袋を、セラーへ。'})).toBeVisible();
   await add(page,'新しい豆','2025-12-01');
   await add(page,'<img src=x onerror=alert(1)> Guji','2025-05-12',true);
   await expect(page.locator('.bean-card').first()).toContainText('<img src=x onerror=alert(1)> Guji');
   await expect(page.locator('.bean-card img')).toHaveCount(0);
-  await page.reload();await page.getByRole('button',{name:'古い順',exact:true}).click();await expect(page.locator('.bean-card')).toHaveCount(2);
+  await page.reload();await page.getByLabel('並び順').selectOption('oldest');await expect(page.locator('.bean-card')).toHaveCount(2);
   await page.locator('.bean-card').first().click();
   await page.getByRole('link',{name:'編集',exact:true}).click();
   await page.getByLabel('豆名',{exact:true}).fill('エチオピア Guji');
@@ -35,7 +35,7 @@ test('phone-sized inventory lifecycle, persistence, cancellation, and safe rende
   await page.getByRole('dialog').getByRole('button',{name:'完全に削除'}).click();
   await expect(page.getByRole('heading',{name:'まだ履歴はありません'})).toBeVisible();
   await page.getByRole('link',{name:'在庫',exact:true}).click();
-  await page.getByRole('button',{name:'古い順',exact:true}).click();
+  await page.getByLabel('並び順').selectOption('oldest');
   await expect(page.locator('.bean-card')).toHaveCount(1);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:'test-results/inventory-mobile.png',fullPage:true});
@@ -67,9 +67,9 @@ test('storage failure keeps entered data and never reports success',async({page}
 
 test('menu presets fill an editable name and the requested copy is shown',async({page})=>{
   await page.goto('/');
-  await page.getByRole('button',{name:'古い順',exact:true}).click();
+  await page.getByLabel('並び順').selectOption('oldest');
   await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();
-  await expect(page.locator('.subtitle')).toHaveText('ゆっくりと時を重ねる、あなたのコーヒー');
+  await expect(page.locator('.subtitle')).toHaveCount(0);
   await page.getByRole('link',{name:'豆を追加'}).click();
   await expect(page.locator('#preset option')).toHaveCount(10);
   await page.getByLabel('プリセットから選ぶ').selectOption({label:'ブラジル｜キャラメラード'});
