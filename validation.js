@@ -19,4 +19,12 @@ export function validateBean(input, currentDate = today()) {
     roastValue: input.roastType === 'scale' ? input.roastValue : null,
     roastCustom: input.roastType === 'custom' ? custom : null };
 }
+// null: 未開封, 'unknown': 開封済みで日付不明, それ以外: 開封日。
+export function validateOpened(value, roastDate, currentDate = today()) {
+  if (value === null || value === 'unknown') return value;
+  if (!parseDate(value)) throw new Error('正しい開封日を入力してください。');
+  if (value > currentDate) throw new Error('未来の開封日は登録できません。');
+  if (value < roastDate) throw new Error('焙煎日より前の開封日は登録できません。');
+  return value;
+}
 export function roastLabel(bean) { return bean.roastType === 'scale' ? `${bean.roastValue} / 5` : bean.roastCustom; }

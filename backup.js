@@ -1,6 +1,6 @@
 import { upgradeSnapshot } from './data.js';
 import { parseDate, ageDays, sortBeans, today } from './dates.js';
-import { validateBean, roastLabel } from './validation.js';
+import { validateBean, validateOpened, roastLabel } from './validation.js';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function exact(object, keys) {
   if (!object || typeof object !== 'object' || Array.isArray(object) || Object.keys(object).length !== keys.length || keys.some(key => !Object.hasOwn(object,key))) throw new Error('バックアップの項目が正しくありません。');
@@ -16,22 +16,22 @@ function timestamp(value) {
 }
 export function validateBackup(data) {
   exact(data,['schemaVersion','exportedAt','beans','presets']);
-  if(![1,2].includes(data.schemaVersion)) throw new Error('対応していないバックアップ形式です。');
+  if(![1,2,3].includes(data.schemaVersion)) throw new Error('対応していないバックアップ形式です。');
   if(!Array.isArray(data.beans)||!Array.isArray(data.presets)) throw new Error('データ一覧が正しくありません。');
   const ids = new Set(), names = new Set();
   const beans=data.beans.map(bean=>{
-    exact(bean,['id','name','roastType','roastValue','roastCustom','roastDate','createdAt','status','finishedAt',...(data.schemaVersion===2?['presetId']:[])]);
+    exact(bean,['id','name','roastType','roastValue','roastCustom','roastDate','createdAt','status','finishedAt',...(data.schemaVersion>=2?['presetId']:[]),...(data.schemaVersion===3?['openedDate']:[])]);
     if(typeof bean.id!=='string'||!uuid.test(bean.id)||ids.has(bean.id.toLowerCase())) throw new Error('豆のIDが不正または重複しています。');
     ids.add(bean.id.toLowerCase());
     const fields=validateBean(bean,'9999-12-31');
     if(bean.name!==fields.name || bean.roastValue!==fields.roastValue || bean.roastCustom!==fields.roastCustom) throw new Error('豆の値に不整合があります。');
     if(!['active','archived'].includes(bean.status) || (bean.status==='active' && bean.finishedAt!==null)) throw new Error('豆の状態が正しくありません。');
-    return {...bean,createdAt:timestamp(bean.createdAt),finishedAt:bean.status==='archived'?timestamp(bean.finishedAt):null};
+    return {...bean,createdAt:timestamp(bean.createdAt),finishedAt:bean.status==='archived'?timestamp(bean.finishedAt):null,openedDate:data.schemaVersion===3?validateOpened(bean.openedDate,bean.roastDate,'9999-12-31'):null};
   });
   ids.clear();
   const presets=data.presets.map(preset=>{
-    exact(preset,['id','name',...(data.schemaVersion===2?['order']:[])]);
-    if(data.schemaVersion===2&&(!Number.isSafeInteger(preset.order)||preset.order<0))throw new Error('プリセットの順序が正しくありません。');
+    exact(preset,['id','name',...(data.schemaVersion>=2?['order']:[])]);
+    if(data.schemaVersion>=2&&(!Number.isSafeInteger(preset.order)||preset.order<0))throw new Error('プリセットの順序が正しくありません。');
     if(typeof preset.id!=='string'||!uuid.test(preset.id)||ids.has(preset.id.toLowerCase())) throw new Error('プリセットのIDが不正または重複しています。');
     if(typeof preset.name!=='string'||!preset.name.trim()||preset.name!==preset.name.trim()||names.has(preset.name)) throw new Error('プリセット名が不正または重複しています。');
     ids.add(preset.id.toLowerCase());names.add(preset.name);return {...preset};
@@ -46,13 +46,13 @@ export function validateBackup(data) {
       if(!preset||preset.name!==bean.name)throw new Error('豆とプリセットの紐付けが正しくありません。');
     }
   }
-  return {schemaVersion:2,exportedAt:timestamp(data.exportedAt),...snapshot};
+  return {schemaVersion:3,exportedAt:timestamp(data.exportedAt),...snapshot};
 }
 export function parseBackup(text) {
   let data;try {data=JSON.parse(text);} catch {throw new Error('JSONファイルを読み込めませんでした。');}
   return validateBackup(data);
 }
-export function serializeBackup(snapshot) {return JSON.stringify(validateBackup({schemaVersion:2,exportedAt:new Date().toISOString(),...snapshot}),null,2);}
+export function serializeBackup(snapshot) {return JSON.stringify(validateBackup({schemaVersion:3,exportedAt:new Date().toISOString(),...snapshot}),null,2);}
 export function counts(data) {return {active:data.beans.filter(b=>b.status==='active').length,archived:data.beans.filter(b=>b.status==='archived').length,presets:data.presets.length};}
 
 function csvCell(value, userText = false) {
@@ -61,9 +61,9 @@ function csvCell(value, userText = false) {
   return '"' + text.replaceAll('"', '""') + '"';
 }
 export function serializeCSV(beans, currentDate = today()) {
-  const rows = ['name,roast,roastDate,ageDays,status,finishedAt'];
+  const rows = ['name,roast,roastDate,openedDate,ageDays,status,finishedAt'];
   for (const bean of sortBeans(beans)) {
-    rows.push([csvCell(bean.name,true), csvCell(roastLabel(bean),true), csvCell(bean.roastDate),
+    rows.push([csvCell(bean.name,true), csvCell(roastLabel(bean),true), csvCell(bean.roastDate), csvCell(bean.openedDate),
       String(ageDays(bean.roastDate,currentDate)), csvCell(bean.status), csvCell(bean.finishedAt)].join(','));
   }
   return '\uFEFF' + rows.join('\r\n') + '\r\n';

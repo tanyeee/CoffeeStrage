@@ -20,7 +20,7 @@ test('manual order survives reconnect and JSON restore, groups sort presets then
  const order=(await repo.listPresets()).map(x=>x.id);order.splice(order.indexOf(q.id),1);order.unshift(q.id);await repo.reorderPresets(order);
  await assert.rejects(repo.reorderPresets([q.id,q.id]));await repo.close();assert.equal((await repo.listPresets())[0].id,q.id);
  const snap=await repo.snapshot();const groups=groupBeans(snap.beans,snap.presets);assert.deepEqual(groups.map(g=>g.name),['B','A','自由入力']);assert.equal(groups[1].beans.length,2);assert.equal(groups[1].beans[0].roastDate,'2025-01-01');
- const backup=parseBackup(serializeBackup(snap));assert.equal(backup.schemaVersion,2);await repo.replace(backup);assert.deepEqual(await repo.snapshot(),snap);
+ const backup=parseBackup(serializeBackup(snap));assert.equal(backup.schemaVersion,3);await repo.replace(backup);assert.deepEqual(await repo.snapshot(),snap);
  const bad=structuredClone(backup);bad.beans[0].presetId=crypto.randomUUID();await assert.rejects(repo.replace(bad));assert.deepEqual(await repo.snapshot(),snap);await repo.close();
 });
 test('old JSON upgrades legacy aliases and new order without losing records',async()=>{

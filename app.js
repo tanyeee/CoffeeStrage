@@ -62,12 +62,14 @@ function roast(bean) {
   const dots = bean.roastType === 'scale' ? `<span class="roast-dots" aria-hidden="true">${[1,2,3,4,5].map(n => `<i class="${n <= bean.roastValue ? 'on' : ''}"></i>`).join('')}</span>` : '';
   return `${dots}焙煎度 ${escape(roastLabel(bean))}`;
 }
+function openedLabel(bean) { return bean.openedDate ? bean.openedDate === 'unknown' ? '不明' : dateLabel(bean.openedDate) : '未開封'; }
+function openedShort(bean) { return bean.openedDate ? bean.openedDate === 'unknown' ? '不明' : compactDate(bean.openedDate) : '未開封'; }
 function timeLabel(value) { return new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)); }
 function card(bean, archived) {
-  return link(`/beans/${bean.id}`, `<div class="bean-name">${escape(bean.name)}</div><div class="bean-age">${archived ? `飲み終わり <small>${escape(timeLabel(bean.finishedAt))}</small>` : age(bean)}</div><div class="bean-meta"><span>${roast(bean)}</span><span>焙煎日 ${dateLabel(bean.roastDate)}</span></div>`, 'bean-card');
+  return link(`/beans/${bean.id}`, `<div class="bean-name">${escape(bean.name)}</div><div class="bean-age">${archived ? `飲み終わり <small>${escape(timeLabel(bean.finishedAt))}</small>` : age(bean)}</div><div class="bean-meta"><span>${roast(bean)}</span><span>焙煎日 ${dateLabel(bean.roastDate)}</span><span>開封 ${escape(openedLabel(bean))}</span></div>`, 'bean-card');
 }
 function groupCard(group) {
-  return `<section class="bean-group"><div class="group-title"><h2>${escape(group.name)}</h2><span>${group.beans.length}袋</span></div><div class="batch-labels" aria-hidden="true"><span></span><span>経過</span><span>焙煎度</span><span>焙煎日</span><span></span></div>${group.beans.map((bean,i)=>link(`/beans/${bean.id}`,`<span class="batch-index">${i+1}.</span><span class="batch-age">${escape(ageLabel(bean.roastDate))}</span><span class="batch-roast" aria-label="焙煎度" title="${escape(roastLabel(bean))}">${escape(bean.roastType==='scale'?bean.roastValue:bean.roastCustom)}</span><time datetime="${bean.roastDate}">${compactDate(bean.roastDate)}</time><span aria-hidden="true">›</span>`,'batch-row')).join('')}</section>`;
+  return `<section class="bean-group"><div class="group-title"><h2>${escape(group.name)}</h2><span>${group.beans.length}袋</span></div><div class="batch-labels" aria-hidden="true"><span></span><span>経過</span><span>焙煎度</span><span>焙煎日</span><span>開封</span><span></span></div>${group.beans.map((bean,i)=>link(`/beans/${bean.id}`,`<span class="batch-index">${i+1}.</span><span class="batch-age">${escape(ageLabel(bean.roastDate))}</span><span class="batch-roast" aria-label="焙煎度" title="${escape(roastLabel(bean))}">${escape(bean.roastType==='scale'?bean.roastValue:bean.roastCustom)}</span><time datetime="${bean.roastDate}">${compactDate(bean.roastDate)}</time><span class="batch-opened${bean.openedDate?'':' unopened'}" aria-label="開封">${escape(openedShort(bean))}</span><span aria-hidden="true">›</span>`,'batch-row')).join('')}</section>`;
 }
 function listView(beans, archived, presets = []) {
   const total = beans.filter(b => b.status === (archived ? 'archived' : 'active'));
@@ -86,8 +88,18 @@ function detailView(bean) {
   app.innerHTML = link(archived ? '/archive' : '/inventory', `‹ ${archived ? 'アーカイブ' : '在庫'}に戻る`, 'back')
     + `<div>${archived ? '<span class="badge">飲み終わった豆</span>' : ''}</div>` + heading(escape(bean.name), 'COFFEE DETAILS')
     + `<p class="detail-age">${age(bean, true)}</p><p class="hint">焙煎から現在まで</p><section class="panel"><dl class="detail-grid">`
-    + [['焙煎度', roastLabel(bean)], ['焙煎日', dateLabel(bean.roastDate)], ['登録日時', timeLabel(bean.createdAt)], ...(archived ? [['飲み終わり日時', timeLabel(bean.finishedAt)]] : [])].map(([label, value]) => `<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')
-    + `</dl></section><div class="actions">${link(`/beans/${bean.id}/edit`, '編集', 'button secondary')}<button id="bean-action" class="${archived ? 'danger' : 'primary'}">${archived ? '完全に削除' : '飲み終わり'}</button></div><p class="error" id="action-error" role="alert"></p>`;
+    + [['焙煎度', roastLabel(bean)], ['焙煎日', dateLabel(bean.roastDate)], ['開封日', openedLabel(bean)], ['登録日時', timeLabel(bean.createdAt)], ...(archived ? [['飲み終わり日時', timeLabel(bean.finishedAt)]] : [])].map(([label, value]) => `<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')
+    + `</dl></section><div class="actions">${link(`/beans/${bean.id}/edit`, '編集', 'button secondary')}${archived ? '' : `<button id="open-action" class="secondary">${bean.openedDate ? '開封日を変更' : '開封'}</button>`}</div><div class="actions"><button id="bean-action" class="${archived ? 'danger' : 'primary'}">${archived ? '完全に削除' : '飲み終わり'}</button></div><p class="error" id="action-error" role="alert"></p>`;
+  document.querySelector('#open-action')?.addEventListener('click', async () => {
+    if (busy) return;
+    const value = await askOpened(bean);
+    if (value === undefined) return;
+    runAction(document.querySelector('#open-action'), async () => {
+      await repository.setOpened(bean.id, value);
+      announce(value === null ? '未開封に戻しました。' : '開封日を保存しました。');
+      await render({ preserve: true });
+    }, document.querySelector('#action-error'));
+  });
   document.querySelector('#bean-action').onclick = async event => {
     if (busy) return;
     if (archived && !await confirmDelete(bean.name)) return;
@@ -102,6 +114,17 @@ function detailView(bean) {
       event.target.disabled = false;
     } finally { busy = false; }
   };
+}
+function askOpened(bean) {
+  const dialog = document.querySelector('#opened'), input = dialog.querySelector('#opened-date');
+  input.min = bean.roastDate; input.max = today();
+  input.value = bean.openedDate && bean.openedDate !== 'unknown' ? bean.openedDate : today();
+  dialog.querySelector('#opened-clear').hidden = !bean.openedDate;
+  return new Promise(resolve => {
+    dialog.returnValue = '';
+    dialog.onclose = () => resolve({ save: input.value, unknown: 'unknown', none: null }[dialog.returnValue]);
+    dialog.showModal(); input.focus();
+  });
 }
 function confirmDelete(name) {
   const dialog = document.querySelector('#confirm');

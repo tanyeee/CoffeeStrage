@@ -1,4 +1,4 @@
-import { validateBean } from './validation.js';
+import { validateBean, validateOpened } from './validation.js';
 import { validateBackup } from './backup.js';
 import { upgradeSnapshot, sortPresets, matchingPreset } from './data.js';
 
@@ -8,7 +8,7 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
     if(connection) return connection;
     connection = new Promise((resolve,reject)=>{
       if(!factory) return reject(new Error('このブラウザでは端末内保存を利用できません。'));
-      const request=factory.open(name,4);
+      const request=factory.open(name,5);
       request.onblocked=onBlocked;
       request.onupgradeneeded=event=>{
         const db=request.result, tx=request.transaction;
@@ -69,7 +69,7 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
           const bean={...old,...fields,presetId:preset?.id??null};
           if(id) store.put(bean);else store.add(bean);done(bean);
         };
-        if(!id)save({id:crypto.randomUUID(),createdAt:new Date().toISOString(),status:'active',finishedAt:null});
+        if(!id)save({id:crypto.randomUUID(),createdAt:new Date().toISOString(),status:'active',finishedAt:null,openedDate:null});
         else {const r=store.get(id);r.onsuccess=()=>{if(!r.result)fail(new Error('この豆は見つかりません。'));else save(r.result);};}
       };
     });
@@ -80,6 +80,7 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
     get:id=>transact(['beans'],'readonly',(tx,done)=>{tx.objectStore('beans').get(id).onsuccess=e=>done(e.target.result);}),
     listPresets:()=>transact(['presets'],'readonly',(tx,done)=>{tx.objectStore('presets').getAll().onsuccess=e=>done(sortPresets(e.target.result));}),
     add:input=>saveBean(null,input),edit:saveBean,
+    setOpened:(id,value)=>mutate(id,bean=>({...bean,openedDate:validateOpened(value,bean.roastDate)})),
     finish:id=>mutate(id,bean=>bean.status==='archived'?bean:{...bean,status:'archived',finishedAt:new Date().toISOString()}),
     remove:id=>mutate(id,bean=>{if(bean.status!=='archived')throw new Error('在庫の豆は完全削除できません。');return null;}),
     async savePreset(id,value){

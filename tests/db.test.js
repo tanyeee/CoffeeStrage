@@ -92,3 +92,29 @@ test('v2 menu migration preserves IDs, custom names, beans and deletions',async(
  await new Promise(resolve=>{const tx=db.transaction(['beans','presets'],'readwrite');tx.objectStore('presets').add({id:'a',name:'エチオピア イルガチェフィー G1 ブナブナ'});tx.objectStore('presets').add({id:'b',name:'マイカスタム'});tx.objectStore('beans').add({...input,id:'bean'});tx.oncomplete=resolve;});db.close();
  const repo=createRepository({factory,name:'v2-migration'});const rows=await repo.listPresets();assert.equal(rows.length,2);assert.equal(rows.find(p=>p.id==='a').name,'エチオピア｜イルガチェフィー G1 ブナブナ');assert.equal(rows.find(p=>p.id==='b').name,'マイカスタム');assert.equal((await repo.get('bean')).name,input.name);await repo.close();
 });
+
+test('opened dates persist, reject impossible values and survive a JSON round trip',async()=>{
+ const {parseBackup,serializeBackup}=await import('../backup.js');
+ const repo=make(),a=await repo.add(input),b=await repo.add(input);
+ assert.equal(a.openedDate,null);
+ assert.equal((await repo.setOpened(a.id,'2025-06-01')).openedDate,'2025-06-01');
+ assert.equal((await repo.setOpened(b.id,'unknown')).openedDate,'unknown');
+ await assert.rejects(repo.setOpened(a.id,'2025-05-11'),/焙煎日より前/);
+ await assert.rejects(repo.setOpened(a.id,'9999-12-31'),/未来/);
+ await assert.rejects(repo.setOpened(a.id,'2025-13-01'),/正しい開封日/);
+ await repo.close();
+ assert.equal((await repo.get(a.id)).openedDate,'2025-06-01');
+ assert.equal((await repo.edit(a.id,{...input,name:'編集後'})).openedDate,'2025-06-01');
+ assert.equal((await repo.setOpened(a.id,null)).openedDate,null);
+ const snap=await repo.snapshot(),restored=parseBackup(serializeBackup(snap));
+ await repo.replace(restored);assert.deepEqual(await repo.snapshot(),snap);
+ await repo.close();
+});
+test('a v2 backup restores as unopened bags',async()=>{
+ const {parseBackup}=await import('../backup.js');
+ const id=crypto.randomUUID(),presetId=crypto.randomUUID();
+ const old={schemaVersion:2,exportedAt:'2026-09-17T00:00:00Z',presets:[{id:presetId,name:'A',order:0}],
+  beans:[{...input,id,name:'Guji',createdAt:'2025-01-01T00:00:00Z',status:'active',finishedAt:null,presetId:null}]};
+ const upgraded=parseBackup(JSON.stringify(old));
+ assert.equal(upgraded.schemaVersion,3);assert.equal(upgraded.beans[0].openedDate,null);assert.equal(old.beans[0].openedDate,undefined);
+});
