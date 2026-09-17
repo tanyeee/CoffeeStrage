@@ -1,4 +1,5 @@
-import { parseBackup, serializeBackup, counts } from './backup.js';
+import { initializePWA, pwaStatus } from './pwa.js';
+import { parseBackup, serializeBackup, serializeCSV, counts } from './backup.js';
 import { createRepository } from './db.js';
 import { today, ageDays, ageLabel, dateLabel, sortBeans } from './dates.js';
 import { validateBean, roastLabel, ValidationError } from './validation.js';
@@ -155,10 +156,18 @@ function formView(bean, presets) {
 }
 async function exportJSON() {
   const text=serializeBackup(await repository.snapshot());
-  const url=URL.createObjectURL(new Blob([text],{type:'application/json'}));
-  const a=document.createElement('a');a.href=url;a.download=`coffee-cellar-backup-${today()}.json`;
-  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  downloadFile(text, 'application/json', `coffee-cellar-backup-${today()}.json`);
   announce('JSONファイルを書き出しました。保存先をご確認ください。');
+}
+async function exportCSV() {
+  const {beans}=await repository.snapshot();
+  downloadFile(serializeCSV(beans), 'text/csv;charset=utf-8', `coffee-cellar-${today()}.csv`);
+  announce('CSVファイルを書き出しました。');
+}
+function downloadFile(text, type, filename) {
+  const url=URL.createObjectURL(new Blob([text],{type}));
+  const a=document.createElement('a');a.href=url;a.download=filename;
+  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 async function runAction(button, operation, errorNode) {
   if(busy) return;
@@ -171,8 +180,9 @@ function settingsView() {
   navigation('settings');
   app.innerHTML = heading('設定', 'YOUR CELLAR')
     + `<section class="panel"><h2>豆プリセット</h2><p class="settings-note">よく買う豆を登録して、入力を手軽に。</p>${link('/settings/presets','プリセットを管理','button secondary')}</section>
-    <section class="panel"><h2>バックアップと復元</h2><p class="settings-note">在庫・アーカイブ・プリセットをまとめてJSONに保存できます。</p><div class="actions"><button class="primary" id="export-json">JSONを書き出す</button></div><div class="field"><label for="import-json">JSONから復元</label><input type="file" id="import-json" accept=".json,application/json"><p class="hint">読み込み後に内容を確認できます。復元すると全データが置き換わります。</p></div><p id="settings-error" class="error" role="alert"></p></section>
-    <section class="panel"><h2>この端末に保存</h2><p class="settings-note">データはこの端末のブラウザ内に保存されます。別の端末へ移すときはJSONバックアップを使ってください。</p><p class="hint">期間フィルターは半年＝180日、1年＝365日、1年半＝548日以上です。</p><p class="hint">ホーム画面に追加するには、Safariの共有メニューから「ホーム画面に追加」を選んでください。起動には通信が必要です。CSV書き出しとオフライン対応は後日追加します。</p></section>`;
+    <section class="panel"><h2>バックアップと復元</h2><p class="settings-note">在庫・アーカイブ・プリセットをまとめてJSONに保存できます。</p><div class="actions"><button class="primary" id="export-json">JSONを書き出す</button><button class="secondary" id="export-csv">CSVを書き出す</button></div><div class="field"><label for="import-json">JSONから復元</label><input type="file" id="import-json" accept=".json,application/json"><p class="hint">読み込み後に内容を確認できます。復元すると全データが置き換わります。</p></div><p id="settings-error" class="error" role="alert"></p></section>
+    <section class="panel"><h2>この端末に保存</h2><p class="settings-note">データはこの端末のブラウザ内に保存されます。別の端末へ移すときはJSONバックアップを使ってください。</p><p class="hint">期間フィルターは半年＝180日、1年＝365日、1年半＝548日以上です。</p><p class="hint">ホーム画面に追加するには、Safariの共有メニューから「ホーム画面に追加」を選んでください。初回は通信可能な状態で開き、オフライン利用の準備完了を確認してください。</p><p class="hint" data-pwa-status role="status">${escape(pwaStatus)}</p></section>`;
+  document.querySelector('#export-csv').onclick=event=>runAction(event.target,exportCSV,document.querySelector('#settings-error'));
   document.querySelector('#export-json').onclick=event=>runAction(event.target,exportJSON,document.querySelector('#settings-error'));
   document.querySelector('#import-json').onchange=event=>{
     const input=event.target,file=input.files[0];if(!file)return;
@@ -285,3 +295,5 @@ if (!location.hash) history.replaceState(null, '', '#/inventory');
 refresh();
 
 app.addEventListener('click',event=>{const button=event.target.closest('[data-filter]');if(button&&!busy){filterDays=Number(button.dataset.filter);render({preserve:true});}});
+
+initializePWA();

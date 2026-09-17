@@ -1,6 +1,6 @@
 import { validateBean } from './validation.js';
 import { validateBackup } from './backup.js';
-import { INITIAL_PRESETS } from './presets.js';
+import { INITIAL_PRESETS, LEGACY_PRESETS } from './presets.js';
 
 export function createRepository({ name = 'coffee-cellar', factory = globalThis.indexedDB, onBlocked = () => {}, onVersionChange = () => {} } = {}) {
   let connection;
@@ -8,7 +8,7 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
     if (connection) return connection;
     connection = new Promise((resolve, reject) => {
       if (!factory) return reject(new Error('このブラウザでは端末内保存を利用できません。'));
-      const request = factory.open(name, 2);
+      const request = factory.open(name, 3);
       request.onblocked = onBlocked;
       request.onupgradeneeded = event => {
         const db = request.result;
@@ -23,7 +23,25 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
           for (const name of INITIAL_PRESETS) {
             const existing = presets.index('name').get(name);
             existing.onsuccess = () => {
-              if (!existing.result) presets.add({ id: crypto.randomUUID(), name });
+              if (existing.result) return;
+              const legacy = presets.index('name').get(LEGACY_PRESETS[INITIAL_PRESETS.indexOf(name)]);
+              legacy.onsuccess = () => {
+                if (!legacy.result) presets.add({ id: crypto.randomUUID(), name });
+              };
+            };
+          }
+        }
+        if (event.oldVersion >= 1 && event.oldVersion < 3) {
+          const store = request.transaction.objectStore('presets');
+          // Only exact menu names migrate; custom names and previously deleted rows stay untouched.
+          for (let i = 0; i < LEGACY_PRESETS.length; i++) {
+            const old = store.index('name').get(LEGACY_PRESETS[i]);
+            old.onsuccess = () => {
+              if (!old.result) return;
+              const target = store.index('name').get(INITIAL_PRESETS[i]);
+              target.onsuccess = () => {
+                if (!target.result) store.put({ ...old.result, name: INITIAL_PRESETS[i] });
+              };
             };
           }
         }

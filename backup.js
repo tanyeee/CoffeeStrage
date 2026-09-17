@@ -1,5 +1,5 @@
-import { parseDate } from './dates.js';
-import { validateBean } from './validation.js';
+import { parseDate, ageDays, sortBeans, today } from './dates.js';
+import { validateBean, roastLabel } from './validation.js';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function exact(object, keys) {
   if (!object || typeof object !== 'object' || Array.isArray(object) || Object.keys(object).length !== keys.length || keys.some(key => !Object.hasOwn(object,key))) throw new Error('バックアップの項目が正しくありません。');
@@ -42,3 +42,17 @@ export function parseBackup(text) {
 }
 export function serializeBackup(snapshot) {return JSON.stringify(validateBackup({schemaVersion:1,exportedAt:new Date().toISOString(),...snapshot}),null,2);}
 export function counts(data) {return {active:data.beans.filter(b=>b.status==='active').length,archived:data.beans.filter(b=>b.status==='archived').length,presets:data.presets.length};}
+
+function csvCell(value, userText = false) {
+  let text = String(value ?? '');
+  if (userText && (/^[\s]*[=+@-]/u.test(text) || /^[\t\r\n]/.test(text))) text = "'" + text;
+  return '"' + text.replaceAll('"', '""') + '"';
+}
+export function serializeCSV(beans, currentDate = today()) {
+  const rows = ['name,roast,roastDate,ageDays,status,finishedAt'];
+  for (const bean of sortBeans(beans)) {
+    rows.push([csvCell(bean.name,true), csvCell(roastLabel(bean),true), csvCell(bean.roastDate),
+      String(ageDays(bean.roastDate,currentDate)), csvCell(bean.status), csvCell(bean.finishedAt)].join(','));
+  }
+  return '\uFEFF' + rows.join('\r\n') + '\r\n';
+}

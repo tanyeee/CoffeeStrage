@@ -1,6 +1,6 @@
 // Initial names transcribed from the user's shop menu (IMG_0981.JPG).
 // Seeded once during the database v2 migration; subsequent edits stay in IndexedDB.
-export const INITIAL_PRESETS = [
+export const LEGACY_PRESETS = [
   'エチオピア イルガチェフィー G1 ブナブナ',
   'コロンビア サンアグスティン マグダレナ',
   'ブラジル キャラメラード',
@@ -11,3 +11,5 @@ export const INITIAL_PRESETS = [
   'グァテマラ フライハーネス',
   'マンデリン ビンタン リマ'
 ];
+
+export const INITIAL_PRESETS = LEGACY_PRESETS.map(name => name.replace(' ', '｜'));

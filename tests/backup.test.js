@@ -39,3 +39,12 @@ test('filter boundaries use exact calendar days',()=>{
   assert.equal(ageDays(end.toISOString().slice(0,10),'2026-09-17'),n);
  }
 });
+
+test('CSV includes both statuses, BOM, CRLF, quoted newlines and neutralized formulas',async()=>{
+ const {serializeCSV}=await import('../backup.js');
+ const bean={...input,id:'a',createdAt:'2025-01-01T00:00:00Z',status:'active',finishedAt:null};
+ const csv=serializeCSV([{...bean,name:'  =1+1'},{...bean,id:'b',name:'豆,"引用"\n次行',status:'archived',finishedAt:'2026-01-01T00:00:00.000Z'}],'2026-01-01');
+ assert.ok(csv.startsWith('\uFEFFname,roast,roastDate,ageDays,status,finishedAt\r\n'));
+ assert.ok(csv.includes('"\'  =1+1"'));assert.ok(csv.includes('"豆,""引用""\n次行"'));
+ assert.ok(csv.includes(',365,"active",""'));assert.ok(csv.includes('"archived","2026-01-01T00:00:00.000Z"'));
+});

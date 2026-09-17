@@ -72,11 +72,23 @@ test('v1 upgrade adds menu presets once and preserves existing beans and presets
   });old.close();
   const repo=createRepository({factory,name:'migration-test'});
   assert.equal((await repo.listPresets()).length,9);
-  assert.equal((await repo.listPresets()).find(p=>p.name==='ブラジル キャラメラード').id,'existing-preset');
+  assert.equal((await repo.listPresets()).find(p=>p.name==='ブラジル｜キャラメラード').id,'existing-preset');
   assert.equal((await repo.get('existing')).name,'Guji');
   const db=await repo.open();
   await new Promise((resolve,reject)=>{
     const tx=db.transaction('presets','readwrite');tx.objectStore('presets').delete('existing-preset');tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);
   });
   await repo.close();assert.equal((await repo.listPresets()).length,8);await repo.close();
+});
+
+test('v2 menu migration preserves IDs, custom names, beans and deletions',async()=>{
+ const factory=new IDBFactory();
+ const db=await new Promise((resolve,reject)=>{
+  const r=factory.open('v2-migration',2);r.onupgradeneeded=()=>{
+   r.result.createObjectStore('beans',{keyPath:'id'});
+   r.result.createObjectStore('presets',{keyPath:'id'}).createIndex('name','name',{unique:true});
+  };r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);
+ });
+ await new Promise(resolve=>{const tx=db.transaction(['beans','presets'],'readwrite');tx.objectStore('presets').add({id:'a',name:'エチオピア イルガチェフィー G1 ブナブナ'});tx.objectStore('presets').add({id:'b',name:'マイカスタム'});tx.objectStore('beans').add({...input,id:'bean'});tx.oncomplete=resolve;});db.close();
+ const repo=createRepository({factory,name:'v2-migration'});const rows=await repo.listPresets();assert.equal(rows.length,2);assert.equal(rows.find(p=>p.id==='a').name,'エチオピア｜イルガチェフィー G1 ブナブナ');assert.equal(rows.find(p=>p.id==='b').name,'マイカスタム');assert.equal((await repo.get('bean')).name,input.name);await repo.close();
 });

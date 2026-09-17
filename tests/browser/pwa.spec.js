@@ -6,5 +6,6 @@ test('PWA manifest and icons resolve from a subpath deployment',async({page,requ
   const manifest=await (await request.get(manifestURL)).json();
   expect(manifest.display).toBe('standalone');expect(manifest.start_url).toBe('./');
   for(const icon of manifest.icons){const response=await request.get(new URL(icon.src,manifestURL).href);expect(response.ok()).toBe(true);expect((await response.body()).subarray(1,4).toString()).toBe('PNG');}
-  expect(await page.evaluate(async()=> (await navigator.serviceWorker.getRegistrations()).length)).toBe(0);
+  await page.evaluate(()=>navigator.serviceWorker.ready);
+  await expect.poll(()=>page.evaluate(()=>Boolean(navigator.serviceWorker.controller))).toBe(true);
 });
