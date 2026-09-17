@@ -5,7 +5,7 @@ const PREFIX = `coffee-cellar:${ROOT.pathname}:`;
 const CACHE = PREFIX + VERSION;
 const FILES = [
   'index.html', 'style.css', 'app.js', 'db.js', 'dates.js', 'validation.js',
-  'backup.js', 'presets.js', 'pwa.js', 'manifest.webmanifest',
+  'backup.js', 'presets.js', 'pwa.js', 'data.js', 'reorder.js', 'manifest.webmanifest',
   'icons/favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'icons/maskable-512.png', 'icons/apple-touch-icon.png'
 ];

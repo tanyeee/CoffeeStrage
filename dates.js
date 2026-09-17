@@ -24,7 +24,13 @@ export function ageLabel(start, end = today()) {
   const a = parseDate(start), b = parseDate(end);
   let months = (b.year - a.year) * 12 + b.month - a.month;
   if (b.day < Math.min(a.day, monthDays(b.year, b.month))) months--;
-  if (months === 0) return '1か月未満';
+  if (months < 12) {
+    const monthIndex = a.year * 12 + a.month - 1 + months;
+    const year = Math.floor(monthIndex / 12), month = monthIndex % 12 + 1;
+    const anniversary = `${String(year).padStart(4,'0')}-${String(month).padStart(2,'0')}-${String(Math.min(a.day,monthDays(year,month))).padStart(2,'0')}`;
+    const days = ageDays(anniversary,end);
+    return months ? `${months}か月${days ? `${days}日` : ''}` : `${days}日`;
+  }
   const years = Math.floor(months / 12), rest = months % 12;
   return years ? `${years}年${rest ? `${rest}か月` : ''}` : `${rest}か月`;
 }
@@ -34,3 +40,5 @@ export function sortBeans(beans, archived = false) {
     ? b.finishedAt.localeCompare(a.finishedAt) || a.id.localeCompare(b.id)
     : a.roastDate.localeCompare(b.roastDate) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
+
+export function compactDate(value) { const p=parseDate(value);return `${String(p.year).slice(-2).padStart(2,'0')}/${p.month}/${p.day}`; }

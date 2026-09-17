@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, copyFile, cp, readFile, writeFile } from 'node:fs/promises';
 await mkdir('_site', { recursive: true });
-const files = ['index.html','style.css','app.js','db.js','dates.js','validation.js','backup.js','presets.js','manifest.webmanifest','pwa.js'];
+const files = ['index.html','style.css','app.js','db.js','dates.js','validation.js','backup.js','presets.js','manifest.webmanifest','pwa.js','data.js','reorder.js'];
 for (const file of files) {
   await copyFile(file, `_site/${file}`);
 }

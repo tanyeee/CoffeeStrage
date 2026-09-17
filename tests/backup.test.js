@@ -17,7 +17,7 @@ test('JSON round trip preserves all stores, custom roast, archive and editable p
 });
 test('reject malformed backup, unknown keys/version, invalid values and duplicate IDs before mutation',async()=>{
  const repo=make();await repo.add(input);const before=await repo.snapshot();const valid=parseBackup(serializeBackup(before));
- const changes=[d=>d.schemaVersion=2,d=>d.extra=1,d=>d.beans.push(d.beans[0]),d=>d.beans[0].finishedAt='2026-01-01T00:00:00Z',d=>d.beans[0].roastValue=2,d=>d.beans[0].createdAt='2026-02-30T00:00:00Z',d=>d.beans[0].createdAt='2026-01-01T24:00:00Z',d=>d.presets.push({...d.presets[0],id:crypto.randomUUID()})];
+ const changes=[d=>d.schemaVersion=3,d=>d.extra=1,d=>d.beans.push(d.beans[0]),d=>d.beans[0].finishedAt='2026-01-01T00:00:00Z',d=>d.beans[0].roastValue=2,d=>d.beans[0].createdAt='2026-02-30T00:00:00Z',d=>d.beans[0].createdAt='2026-01-01T24:00:00Z',d=>d.presets.push({...d.presets[0],id:crypto.randomUUID()})];
  for(const change of changes){const data=structuredClone(valid);change(data);await assert.rejects(repo.replace(data));assert.deepEqual(await repo.snapshot(),before);}
  assert.throws(()=>parseBackup('{'));await repo.close();
 });

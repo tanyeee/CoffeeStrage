@@ -1,12 +1,15 @@
+import { groupBeans } from './data.js';
+import { bindReorder } from './reorder.js';
 import { initializePWA, pwaStatus } from './pwa.js';
 import { parseBackup, serializeBackup, serializeCSV, counts } from './backup.js';
 import { createRepository } from './db.js';
-import { today, ageDays, ageLabel, dateLabel, sortBeans } from './dates.js';
+import { today, ageDays, ageLabel, dateLabel, compactDate, sortBeans } from './dates.js';
 import { validateBean, roastLabel, ValidationError } from './validation.js';
 
 const app = document.querySelector('#app'), nav = document.querySelector('#nav');
 const notice = document.querySelector('#notice');
 const repository = createRepository({ onBlocked: () => announce('別のCoffee Cellar画面を閉じてください。'), onVersionChange: () => announce('アプリが更新されました。画面を再読み込みしてください。') });
+let viewMode = 'grouped', disposeDrag = () => {};
 let filterDays = 0, pendingBackup = null;
 let route = '', formBaseline = '', busy = false, renderId = 0, noticeTimer, midnightTimer;
 const scrollPositions = new Map();
@@ -58,14 +61,19 @@ function timeLabel(value) { return new Intl.DateTimeFormat('ja-JP', { dateStyle:
 function card(bean, archived) {
   return link(`/beans/${bean.id}`, `<div class="bean-name">${escape(bean.name)}</div><div class="bean-age">${archived ? `飲み終わり <small>${escape(timeLabel(bean.finishedAt))}</small>` : age(bean)}</div><div class="bean-meta"><span>${roast(bean)}</span><span>焙煎日 ${dateLabel(bean.roastDate)}</span></div>`, 'bean-card');
 }
-function listView(beans, archived) {
+function groupCard(group) {
+  return `<section class="bean-group"><div class="group-title"><h2>${escape(group.name)}</h2><span>${group.beans.length}袋</span></div><div class="batch-labels" aria-hidden="true"><span></span><span>経過</span><span>焙煎度</span><span>焙煎日</span><span></span></div>${group.beans.map((bean,i)=>link(`/beans/${bean.id}`,`<span class="batch-index">${i+1}.</span><span class="batch-age">${escape(ageLabel(bean.roastDate))}</span><span class="batch-roast" aria-label="焙煎度" title="${escape(roastLabel(bean))}">${escape(bean.roastType==='scale'?bean.roastValue:bean.roastCustom)}</span><time datetime="${bean.roastDate}">${compactDate(bean.roastDate)}</time><span aria-hidden="true">›</span>`,'batch-row')).join('')}</section>`;
+}
+function listView(beans, archived, presets = []) {
   const total = beans.filter(b => b.status === (archived ? 'archived' : 'active'));
   const collection = sortBeans(total.filter(b => archived || !filterDays || ageDays(b.roastDate) >= filterDays), archived);
+  if(!archived && viewMode==='newest')collection.reverse();
   navigation(archived ? 'archive' : 'inventory');
   app.innerHTML = heading(archived ? '飲み終わった豆' : '現在の貯蔵数', archived ? 'YOUR COFFEE HISTORY' : 'IN YOUR CELLAR', `<span class="count"><strong>${total.length}</strong>袋</span>`)
     + (archived ? '' : '<p class="subtitle">ゆっくりと時を重ねる、あなたのコーヒー</p>')
+    + (archived ? '' : `<div class="view-modes" aria-label="在庫の表示方法">${[['grouped','豆別まとめ'],['oldest','古い順'],['newest','新しい順']].map(([mode,label])=>`<button data-view="${mode}" aria-pressed="${viewMode===mode}">${label}</button>`).join('')}</div>`)
     + (archived ? '' : `<div class="filters" aria-label="保管期間">${[[0,'すべて'],[180,'半年〜'],[365,'1年〜'],[548,'1年半〜']].map(([days,label])=>`<button class="secondary" data-filter="${days}" aria-pressed="${filterDays===days}">${label}</button>`).join('')}</div>${filterDays?`<p class="hint">該当 ${collection.length} / ${total.length}袋 · ${filterDays}日以上</p>`:''}`)
-    + (collection.length ? `<div class="section-label"><span>${archived ? 'ARCHIVE' : 'COLLECTION'}</span><span>${archived ? '飲み終わった順' : '焙煎日の古い順'}</span></div><div class="bean-list">${collection.map(bean => card(bean, archived)).join('')}</div>`
+    + (collection.length ? `<div class="section-label"><span>${archived ? 'ARCHIVE' : 'COLLECTION'}</span><span>${archived ? '飲み終わった順' : viewMode==='grouped'?'プリセット順・袋は古い順':viewMode==='oldest'?'焙煎日の古い順':'焙煎日の新しい順'}</span></div><div class="bean-list">${!archived&&viewMode==='grouped'?groupBeans(collection,presets).map(groupCard).join(''):collection.map(bean => card(bean, archived)).join('')}</div>`
       : `<section class="empty"><span class="empty-symbol" aria-hidden="true">◒</span><h2>${archived ? 'まだ履歴はありません' : filterDays ? 'この期間の豆はありません' : '最初のひと袋を、セラーへ。'}</h2><p>${archived ? '飲み終わった豆は、ここに記録として残ります。' : filterDays ? '「すべて」を選ぶと全在庫を表示します。' : '豆の名前と焙煎日を記録して、熟成の時間を見守りましょう。'}</p>${archived ? '' : link('/beans/new', '＋ 豆を追加', 'button primary')}</section>`)
     + (!archived && collection.length ? link('/beans/new', '<span aria-hidden="true">＋</span> 豆を追加', 'button primary add-bar') : '');
 }
@@ -196,28 +204,36 @@ function settingsView() {
 function presetsView(presets) {
   navigation('settings');
   app.innerHTML=link('/settings','‹ 設定に戻る','back')+heading('豆プリセット','YOUR REGULARS')+
-    `<form id="preset-form" class="panel"><label for="preset-name">プリセット名</label><input type="text" id="preset-name" name="name" required><input type="hidden" name="id"><div class="actions"><button type="submit" class="primary">追加</button><button type="button" id="reset-preset" class="secondary">入力をクリア</button></div><p class="error" id="preset-error" role="alert"></p></form><p class="hint">編集・削除しても登録済みの豆名は変わりません。</p><div class="preset-list">${presets.map(p=>`<section class="panel"><h2>${escape(p.name)}</h2><div class="actions"><button class="secondary" data-edit-preset="${escape(p.id)}">編集</button><button class="secondary" data-delete-preset="${escape(p.id)}">削除</button></div></section>`).join('') || '<p class="hint">プリセットはまだありません。自由入力で豆を登録できます。</p>'}</div>`;
-  const form=document.querySelector('#preset-form');formBaseline=formSnapshot();
-  const reset=()=>{form.reset();form.querySelector('[name=id]').value='';form.querySelector('[type=submit]').textContent='追加';formBaseline=formSnapshot();};
-  document.querySelector('#reset-preset').onclick=()=>{if(!busy && (!dirty()||window.confirm('入力をクリアしますか？')))reset();};
-  form.onsubmit=event=>{
-    event.preventDefault();
-    runAction(form.querySelector('[type=submit]'),async()=>{
-      await repository.savePreset(form.elements.id.value||null,form.elements.name.value);
-      formBaseline='';announce('プリセットを保存しました。');await render();
-    },document.querySelector('#preset-error'));
+    `<p class="hint">名前をタップして編集・削除。右の≡を上下に動かすと並べ替えできます。</p><button id="add-preset" class="secondary preset-add">＋ プリセットを追加</button>
+    <form id="preset-form" class="panel" hidden><label for="preset-name">プリセット名</label><input type="text" id="preset-name" name="name" required><input type="hidden" name="id"><p class="hint">名前の変更は、紐付いた在庫とアーカイブにも反映されます。</p><div class="actions"><button type="submit" class="primary">追加</button><button type="button" id="reset-preset" class="secondary">キャンセル</button></div><p class="error" id="preset-error" role="alert"></p></form>
+    <p id="reorder-status" class="hint" role="status"></p><div class="preset-list">${presets.map((p,i)=>`<section class="preset-row" data-preset-row="${escape(p.id)}"><div class="preset-line"><button class="preset-name" data-preset-menu="${escape(p.id)}" aria-expanded="false" aria-controls="preset-actions-${i}">${escape(p.name)}</button><button class="drag-handle" data-handle="${escape(p.id)}" aria-label="${escape(p.name)}を並べ替え" aria-describedby="reorder-help">≡</button></div><div id="preset-actions-${i}" class="preset-actions" hidden><button class="secondary" data-edit-preset="${escape(p.id)}">編集</button><button class="secondary" data-delete-preset="${escape(p.id)}">削除</button></div></section>`).join('')||'<p class="hint">プリセットはまだありません。</p>'}</div><p id="reorder-help" class="hint">ハンドルにフォーカスして↑↓キーでも移動できます。豆別まとめの順番にも反映されます。</p>`;
+  const form=document.querySelector('#preset-form');formBaseline='';
+  const openForm=preset=>{
+    if(busy||(dirty()&&!window.confirm('入力中の変更を破棄しますか？')))return;
+    form.hidden=false;form.elements.id.value=preset?.id||'';form.elements.name.value=preset?.name||'';
+    form.querySelector('[type=submit]').textContent=preset?'保存':'追加';form.querySelector('.error').textContent='';formBaseline=formSnapshot();form.elements.name.focus();
   };
-  app.querySelectorAll('[data-edit-preset]').forEach(button=>button.onclick=()=>{
-    if(busy || (dirty()&&!window.confirm('入力中の変更を破棄しますか？')))return;
-    const preset=presets.find(p=>p.id===button.dataset.editPreset);
-    form.elements.id.value=preset.id;form.elements.name.value=preset.name;
-    form.querySelector('[type=submit]').textContent='保存';formBaseline=formSnapshot();form.elements.name.focus();
+  document.querySelector('#add-preset').onclick=()=>openForm();
+  document.querySelector('#reset-preset').onclick=()=>{if(!busy&&(!dirty()||window.confirm('入力中の変更を破棄しますか？'))){form.hidden=true;formBaseline='';document.querySelector('#add-preset').focus();}};
+  form.onsubmit=event=>{event.preventDefault();runAction(form.querySelector('[type=submit]'),async()=>{
+    await repository.savePreset(form.elements.id.value||null,form.elements.name.value);formBaseline='';announce('プリセットを保存しました。');await render();
+  },document.querySelector('#preset-error'));};
+  app.querySelectorAll('[data-preset-menu]').forEach(button=>button.onclick=()=>{
+    if(busy)return;
+    const target=document.getElementById(button.getAttribute('aria-controls')),opening=target.hidden;
+    app.querySelectorAll('.preset-actions').forEach(node=>{node.hidden=true;});app.querySelectorAll('[data-preset-menu]').forEach(node=>node.setAttribute('aria-expanded','false'));
+    target.hidden=!opening;button.setAttribute('aria-expanded',String(opening));
   });
+  app.querySelectorAll('[data-edit-preset]').forEach(button=>button.onclick=()=>openForm(presets.find(p=>p.id===button.dataset.editPreset)));
   app.querySelectorAll('[data-delete-preset]').forEach(button=>button.onclick=async()=>{
-    if(busy || (dirty()&&!window.confirm('入力中の変更を破棄しますか？')))return;
+    if(busy||(dirty()&&!window.confirm('入力中の変更を破棄しますか？')))return;
     const preset=presets.find(p=>p.id===button.dataset.deletePreset);
     if(!await confirmDelete(preset.name))return;
-    runAction(button,async()=>{await repository.removePreset(preset.id);formBaseline='';announce('プリセットを削除しました。');await render();},document.querySelector('#preset-error'));
+    runAction(button,async()=>{await repository.removePreset(preset.id);formBaseline='';announce('プリセットを削除しました。豆の記録は残っています。');await render();},document.querySelector('#reorder-status'));
+  });
+  disposeDrag=bindReorder(document.querySelector('.preset-list'),{
+    canStart:()=>!busy&&!dirty(),onBusy:value=>{busy=value;},onSave:ids=>repository.reorderPresets(ids),
+    onMessage:message=>{document.querySelector('#reorder-status').textContent=message;}
   });
 }
 function restoreView(current) {
@@ -233,15 +249,16 @@ function restoreView(current) {
   },document.querySelector('#restore-error'));
 }
 async function render({ preserve = false } = {}) {
+  disposeDrag();disposeDrag=()=>{};
   const token = ++renderId;
   const next = location.hash.slice(1) || '/inventory';
   if (route && next !== route) scrollPositions.set(route, window.scrollY);
   route = next;
   try {
     if (next === '/inventory' || next === '/archive') {
-      const beans = await repository.list();
+      const data = await repository.snapshot();
       if (token !== renderId) return;
-      listView(beans, next === '/archive');
+      listView(data.beans, next === '/archive', data.presets);
     }
     else if (next === '/settings') { pendingBackup=null;settingsView(); }
     else if (next === '/settings/presets') {
@@ -294,6 +311,6 @@ window.addEventListener('pageshow', event => { if (event.persisted) refresh(); }
 if (!location.hash) history.replaceState(null, '', '#/inventory');
 refresh();
 
-app.addEventListener('click',event=>{const button=event.target.closest('[data-filter]');if(button&&!busy){filterDays=Number(button.dataset.filter);render({preserve:true});}});
+app.addEventListener('click',event=>{const button=event.target.closest('[data-filter], [data-view]');if(button&&!busy){if(button.dataset.view)viewMode=button.dataset.view;else filterDays=Number(button.dataset.filter);render({preserve:true}).then(()=>{const attr=button.dataset.view?'data-view':'data-filter';app.querySelector(`[${attr}="${button.getAttribute(attr)}"]`)?.focus({preventScroll:true});});}});
 
 initializePWA();
