@@ -12,7 +12,7 @@ test('grouped inventory shows one compact row per bag, switches order and follow
  await page.clock.install({time:new Date('2026-09-17T12:00:00+09:00')});await seed(page);
  await expect(page.locator('.bean-group')).toHaveCount(2);await expect(page.locator('.bean-group').first().locator('.batch-row')).toHaveCount(2);
  await expect(page.locator('.batch-age').nth(1)).toHaveText('2.1ヶ月');await expect(page.locator('.batch-row time').first()).toHaveText('25/2/14');await expect(page.locator('.batch-roast').first()).toHaveText('2');
- const heights=await page.locator('.batch-row').evaluateAll(rows=>rows.map(row=>row.getBoundingClientRect().height));expect(Math.max(...heights)).toBeLessThan(55);
+ const heights=await page.locator('.batch-row').evaluateAll(rows=>rows.map(row=>row.getBoundingClientRect().height));expect(Math.max(...heights)).toBeLessThan(34);
  await page.screenshot({path:'test-results/grouped-mobile.png',fullPage:true});
  await page.getByLabel('並び順').selectOption('newest');await expect(page.locator('.bean-card').first()).toContainText('2026/07/14');
  await page.getByLabel('並び順').selectOption('oldest');await expect(page.locator('.bean-card').first()).toContainText('2025/02/14');await expect(page.locator('.bean-card').first()).not.toContainText('日）');
