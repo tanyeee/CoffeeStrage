@@ -16,9 +16,20 @@ test('inventory searches names and notes and filters opened state',async({page})
  await page.getByLabel('開封状態').selectOption('unopened');await expect(page.locator('.batch-row')).toHaveCount(1);await expect(page.locator('.bean-group')).toContainText('エチオピア');
  await page.getByLabel('開封状態').selectOption('opened');await expect(page.locator('.batch-row')).toHaveCount(1);await expect(page.locator('.bean-group')).toContainText('ケニア');
  await page.getByLabel('開封状態').selectOption('all');
+ await expect(page.getByLabel('開封状態').locator('option')).toHaveText(['すべて','未開封','開封済']);
+ await expect(page.getByLabel('豆名・備考を検索')).toHaveAttribute('placeholder','検索');
+ const compactWidth=await page.locator('.list-search').evaluate(node=>node.getBoundingClientRect().width);
+ await page.getByLabel('豆名・備考を検索').focus();
+ await page.waitForTimeout(300);
+ const expandedWidth=await page.locator('.list-search').evaluate(node=>node.getBoundingClientRect().width);
+ expect(expandedWidth).toBeGreaterThan(compactWidth*1.5);
  await page.getByLabel('豆名・備考を検索').fill('友人');await expect(page.locator('.bean-group')).toHaveCount(1);await expect(page.locator('.bean-group')).toContainText('ケニア');
  await page.getByLabel('豆名・備考を検索').fill('存在しない');await expect(page.getByRole('heading',{name:'条件に合う豆はありません'})).toBeVisible();
  await page.getByLabel('豆名・備考を検索').fill('');await expect(page.locator('.bean-group')).toHaveCount(2);
+ await page.setViewportSize({width:320,height:720});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ const titleBox=await page.getByRole('heading',{name:'現在の貯蔵数'}).boundingBox(),countBox=await page.locator('.title-with-count .count').boundingBox(),openedBox=await page.getByLabel('開封状態').boundingBox();
+ expect(countBox.x).toBeGreaterThan(titleBox.x);expect(openedBox.x).toBeGreaterThan(countBox.x);
+ await page.screenshot({path:'test-results/inventory-filters-mobile.png',fullPage:true});
 });
 
 test('archive groups beans and combines bean, period, reason and text filters',async({page})=>{
@@ -44,5 +55,7 @@ test('archive groups beans and combines bean, period, reason and text filters',a
  await page.getByLabel('豆名・備考を検索').fill('');await page.getByLabel('並び順').selectOption('oldest');await expect(page.locator('.bean-card').first()).toContainText('2026/03/01');
  await page.getByLabel('並び順').selectOption('newest');await expect(page.locator('.bean-card').first()).toContainText('2026/09/17');
  await page.setViewportSize({width:320,height:720});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await page.getByLabel('並び順').selectOption('grouped');await page.screenshot({path:'test-results/archive-filters-mobile.png',fullPage:true});
+ await page.getByLabel('並び順').selectOption('grouped');await expect(page.getByLabel('豆を選択')).toBeVisible();await page.screenshot({path:'test-results/archive-filters-mobile.png',fullPage:true});
+ const beanBox=await page.getByLabel('豆を選択').boundingBox(),sortBox=await page.getByLabel('並び順').boundingBox();
+ expect(beanBox.y).toBe(sortBox.y);expect(beanBox.x).toBeLessThan(sortBox.x);
 });
