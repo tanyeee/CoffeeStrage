@@ -24,9 +24,9 @@ test('phone-sized inventory lifecycle, persistence, cancellation, and safe rende
   await page.getByLabel('豆名',{exact:true}).fill('エチオピア Guji');
   await page.getByRole('button',{name:'保存',exact:true}).click();
   await expect(page.getByRole('heading',{name:'エチオピア Guji'})).toBeVisible();
-  await page.getByRole('button',{name:'飲み終わり',exact:true}).click();
+  await page.getByRole('button',{name:'アーカイブへ移す',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'飲み切った',exact:true}).click();
   await expect(page.getByRole('button',{name:'完全に削除'})).toBeVisible();
-  await page.reload();await expect(page.getByText('飲み終わり日時',{exact:true})).toBeVisible();
+  await page.reload();await expect(page.getByText('アーカイブ日時',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'完全に削除'}).click();
   await expect(page.getByRole('button',{name:'キャンセル'})).toBeFocused();
   await page.getByRole('button',{name:'キャンセル'}).click();
@@ -35,6 +35,7 @@ test('phone-sized inventory lifecycle, persistence, cancellation, and safe rende
   await page.getByRole('dialog').getByRole('button',{name:'完全に削除'}).click();
   await expect(page.getByRole('heading',{name:'まだ履歴はありません'})).toBeVisible();
   await page.getByRole('link',{name:'在庫',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();
   await page.getByLabel('並び順').selectOption('oldest');
   await expect(page.locator('.bean-card')).toHaveCount(1);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

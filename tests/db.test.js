@@ -14,7 +14,7 @@ test('duplicate bags persist across reconnect and editing preserves lifecycle fi
   const edited=await repo.edit(a.id,{...input,name:'Nyeri',createdAt:'bad',status:'archived'});
   assert.equal(edited.name,'Nyeri');assert.equal(edited.createdAt,a.createdAt);assert.equal(edited.status,'active');
   const finished=await repo.finish(a.id);
-  assert.equal(finished.status,'archived');assert.ok(finished.finishedAt);
+  assert.equal(finished.status,'archived');assert.ok(finished.finishedAt);assert.equal(finished.finishedReason,'consumed');
   assert.equal((await repo.finish(a.id)).finishedAt,finished.finishedAt);
   const archivedEdit=await repo.edit(a.id,{...input,name:'Edited archive'});
   assert.equal(archivedEdit.status,'archived');assert.equal(archivedEdit.finishedAt,finished.finishedAt);
@@ -116,5 +116,20 @@ test('a v2 backup restores as unopened bags',async()=>{
  const old={schemaVersion:2,exportedAt:'2026-09-17T00:00:00Z',presets:[{id:presetId,name:'A',order:0}],
   beans:[{...input,id,name:'Guji',createdAt:'2025-01-01T00:00:00Z',status:'active',finishedAt:null,presetId:null}]};
  const upgraded=parseBackup(JSON.stringify(old));
- assert.equal(upgraded.schemaVersion,4);assert.equal(upgraded.beans[0].openedDate,null);assert.equal(old.beans[0].openedDate,undefined);
+ assert.equal(upgraded.schemaVersion,5);assert.equal(upgraded.beans[0].openedDate,null);assert.equal(upgraded.beans[0].finishedReason,null);assert.equal(old.beans[0].openedDate,undefined);
+});
+test('finish reasons are validated, persist and do not change after archiving',async()=>{
+ const repo=make(),a=await repo.add(input),b=await repo.add(input);
+ await assert.rejects(repo.finish(a.id,'lost'),/終了区分/);assert.equal((await repo.get(a.id)).status,'active');
+ const gifted=await repo.finish(a.id,'gifted');assert.equal(gifted.finishedReason,'gifted');
+ assert.equal((await repo.finish(a.id,'discarded')).finishedReason,'gifted');
+ assert.equal((await repo.edit(a.id,{...input,finishedReason:'discarded'})).finishedReason,'discarded');
+ await assert.rejects(repo.edit(a.id,{...input,finishedReason:'lost'}),/終了区分/);
+ assert.equal((await repo.finish(b.id,'discarded')).finishedReason,'discarded');await repo.close();
+});
+test('v6 database migration adds an unknown finish reason without changing notes',async()=>{
+ const factory=new IDBFactory(),name='finish-reason-migration',id=crypto.randomUUID();
+ const db=await new Promise((resolve,reject)=>{const r=factory.open(name,6);r.onupgradeneeded=()=>{r.result.createObjectStore('beans',{keyPath:'id'});r.result.createObjectStore('presets',{keyPath:'id'}).createIndex('name','name',{unique:true});};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+ await new Promise((resolve,reject)=>{const tx=db.transaction('beans','readwrite');tx.objectStore('beans').add({...input,id,createdAt:'2025-05-12T00:00:00Z',status:'archived',finishedAt:'2026-09-01T00:00:00Z',presetId:null,openedDate:null,notes:'以前の備考'});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});db.close();
+ const repo=createRepository({factory,name});const bean=await repo.get(id);assert.equal(bean.finishedReason,null);assert.equal(bean.notes,'以前の備考');await repo.close();
 });

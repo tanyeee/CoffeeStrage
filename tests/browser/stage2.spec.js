@@ -33,6 +33,6 @@ test('JSON download, confirmation, full restore and invalid file rejection',asyn
  await page.locator('#import-json').setInputFiles({name:'backup.json',mimeType:'application/json',buffer:bytes});await page.getByRole('button',{name:'全データを置き換えて復元'}).click();await expect(page.getByRole('heading',{name:'設定',exact:true})).toBeVisible();
  await page.locator('#import-json').setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from('{')});await expect(page.getByRole('alert')).toContainText('JSONファイルを読み込めませんでした');
  await page.getByRole('link',{name:'在庫',exact:true}).click();await expect(page.locator('.bean-card')).toHaveCount(6);
- await page.getByRole('button',{name:'半年以上',exact:true}).click();await expect(page.locator('.bean-card')).toHaveCount(2);await expect(page.getByText('該当 2 / 6袋 · 半年以上')).toBeVisible();
+ await page.getByRole('button',{name:'半年以上',exact:true}).click();await expect(page.locator('.bean-card')).toHaveCount(2);await expect(page.getByText('該当 2 / 6袋')).toBeVisible();
  await page.screenshot({path:'test-results/stage2-mobile.png',fullPage:true});
 });

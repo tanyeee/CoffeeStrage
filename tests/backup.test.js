@@ -16,7 +16,7 @@ test('JSON round trip preserves all stores, custom roast, archive and editable p
 });
 test('reject malformed backup, unknown keys/version, invalid values and duplicate IDs before mutation',async()=>{
  const repo=make();await repo.add(input);const before=await repo.snapshot();const valid=parseBackup(serializeBackup(before));
- const changes=[d=>d.schemaVersion=5,d=>d.beans[0].openedDate='2020-01-01',d=>d.beans[0].openedDate='開封済み',d=>d.extra=1,d=>d.beans.push(d.beans[0]),d=>d.beans[0].finishedAt='2026-01-01T00:00:00Z',d=>d.beans[0].roastValue=2,d=>d.beans[0].createdAt='2026-02-30T00:00:00Z',d=>d.beans[0].createdAt='2026-01-01T24:00:00Z',d=>d.presets.push({...d.presets[0],id:crypto.randomUUID()})];
+ const changes=[d=>d.schemaVersion=6,d=>d.beans[0].openedDate='2020-01-01',d=>d.beans[0].openedDate='開封済み',d=>d.beans[0].finishedReason='lost',d=>d.extra=1,d=>d.beans.push(d.beans[0]),d=>d.beans[0].finishedAt='2026-01-01T00:00:00Z',d=>d.beans[0].roastValue=2,d=>d.beans[0].createdAt='2026-02-30T00:00:00Z',d=>d.beans[0].createdAt='2026-01-01T24:00:00Z',d=>d.presets.push({...d.presets[0],id:crypto.randomUUID()})];
  for(const change of changes){const data=structuredClone(valid);change(data);await assert.rejects(repo.replace(data));assert.deepEqual(await repo.snapshot(),before);}
  assert.throws(()=>parseBackup('{'));await repo.close();
 });
@@ -41,9 +41,9 @@ test('filter boundaries use completed calendar months',async()=>{
 
 test('CSV includes both statuses, BOM, CRLF, quoted newlines and neutralized formulas',async()=>{
  const {serializeCSV}=await import('../backup.js');
- const bean={...input,id:'a',createdAt:'2025-01-01T00:00:00Z',status:'active',finishedAt:null,openedDate:null};
- const csv=serializeCSV([{...bean,name:'  =1+1'},{...bean,id:'b',name:'豆,"引用"\n次行',status:'archived',finishedAt:'2026-01-01T00:00:00.000Z',openedDate:'unknown'}],'2026-01-01');
- assert.ok(csv.startsWith('\uFEFFname,roast,roastDate,openedDate,ageDays,status,finishedAt,notes\r\n'));
+ const bean={...input,id:'a',createdAt:'2025-01-01T00:00:00Z',status:'active',finishedAt:null,finishedReason:null,openedDate:null};
+ const csv=serializeCSV([{...bean,name:'  =1+1'},{...bean,id:'b',name:'豆,"引用"\n次行',status:'archived',finishedAt:'2026-01-01T00:00:00.000Z',finishedReason:'gifted',openedDate:'unknown'}],'2026-01-01');
+ assert.ok(csv.startsWith('\uFEFFname,roast,roastDate,openedDate,ageDays,status,finishedAt,finishedReason,notes\r\n'));
  assert.ok(csv.includes('"\'  =1+1"'));assert.ok(csv.includes('"豆,""引用""\n次行"'));
- assert.ok(csv.includes('"",365,"active",""'));assert.ok(csv.includes('"unknown",365,"archived"'));assert.ok(csv.includes('"archived","2026-01-01T00:00:00.000Z"'));
+ assert.ok(csv.includes('"",365,"active","","",""'));assert.ok(csv.includes('"unknown",365,"archived"'));assert.ok(csv.includes('"archived","2026-01-01T00:00:00.000Z","gifted"'));
 });

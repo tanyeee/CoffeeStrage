@@ -29,4 +29,9 @@ export function validateOpened(value, roastDate, currentDate = today()) {
   if (value < roastDate) throw new Error('焙煎日より前の開封日は登録できません。');
   return value;
 }
+export const FINISH_REASONS = ['consumed','gifted','discarded'];
+export function validateFinishReason(value) {
+  if (!FINISH_REASONS.includes(value)) throw new Error('終了区分が正しくありません。');
+  return value;
+}
 export function roastLabel(bean) { return bean.roastType === 'scale' ? `${bean.roastValue} / 5` : bean.roastCustom; }

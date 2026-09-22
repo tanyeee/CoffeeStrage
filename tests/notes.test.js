@@ -39,19 +39,19 @@ test('v5 migration only adds empty notes, preserving links, order, dates and lif
   };r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);
  });old.close();
  const repo=createRepository({factory,name});
- for(const bean of beans)assert.deepEqual(await repo.get(bean.id),{...bean,notes:''});
+ for(const bean of beans)assert.deepEqual(await repo.get(bean.id),{...bean,notes:'',finishedReason:null});
  assert.deepEqual(await repo.listPresets(),[preset]);await repo.close();
  assert.equal((await repo.get(base.id)).notes,'');await repo.close();
 });
 
-test('v1-v3 backups migrate to empty notes without mutating the source',async()=>{
+test('v1-v4 backups migrate missing fields without mutating the source',async()=>{
  const repo=createRepository({factory:new IDBFactory()});await repo.add(input);
  const latest=JSON.parse(serializeBackup(await repo.snapshot()));
- for(const version of [1,2,3]){
+ for(const version of [1,2,3,4]){
   const old=structuredClone(latest);old.schemaVersion=version;
-  for(const bean of old.beans){delete bean.notes;if(version<3)delete bean.openedDate;if(version<2)delete bean.presetId;}
+  for(const bean of old.beans){delete bean.finishedReason;if(version<4)delete bean.notes;if(version<3)delete bean.openedDate;if(version<2)delete bean.presetId;}
   if(version<2)for(const preset of old.presets)delete preset.order;
-  const migrated=parseBackup(JSON.stringify(old));assert.equal(migrated.schemaVersion,4);assert.equal(migrated.beans[0].notes,'');assert.equal(old.beans[0].notes,undefined);
+  const migrated=parseBackup(JSON.stringify(old));assert.equal(migrated.schemaVersion,5);assert.equal(migrated.beans[0].notes,'');assert.equal(migrated.beans[0].finishedReason,null);
   await repo.replace(migrated);assert.equal((await repo.list())[0].notes,'');
  }
  for(const value of [null,42,{},[]]){

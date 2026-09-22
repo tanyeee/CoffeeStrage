@@ -1,4 +1,4 @@
-import { validateBean, validateOpened } from './validation.js';
+import { validateBean, validateOpened, validateFinishReason } from './validation.js';
 import { validateBackup } from './backup.js';
 import { upgradeSnapshot, sortPresets, matchingPreset } from './data.js';
 
@@ -8,7 +8,7 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
     if(connection) return connection;
     connection = new Promise((resolve,reject)=>{
       if(!factory) return reject(new Error('このブラウザでは端末内保存を利用できません。'));
-      const request=factory.open(name,6);
+      const request=factory.open(name,7);
       request.onblocked=onBlocked;
       request.onupgradeneeded=event=>{
         const db=request.result, tx=request.transaction;
@@ -26,7 +26,7 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
             const data=event.oldVersion<4
               ? upgradeSnapshot(snapshot,{seed:event.oldVersion<2,normalize:event.oldVersion<3})
               : snapshot;
-            data.beans=data.beans.map(bean=>({...bean,openedDate:bean.openedDate??null,notes:bean.notes??''}));
+            data.beans=data.beans.map(bean=>({...bean,openedDate:bean.openedDate??null,notes:bean.notes??'',finishedReason:bean.status==='archived'?(bean.finishedReason??null):null}));
             for(const key of ['beans','presets']) for(const item of data[key]) tx.objectStore(key).put(item);
           } catch {tx.abort();}
         };
@@ -65,15 +65,16 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
   }
   async function saveBean(id,input){
     const fields=validateBean(input);
+    const finishedReason=input.finishedReason===undefined?undefined:input.finishedReason===null?null:validateFinishReason(input.finishedReason);
     return transact(['beans','presets'],'readwrite',(tx,done,fail)=>{
       const store=tx.objectStore('beans'),presets=tx.objectStore('presets').getAll();
       presets.onsuccess=()=>{
         const preset=matchingPreset(fields.name,presets.result);
         const save=old=>{
-          const bean={...old,...fields,notes:input.notes===undefined?(old.notes??''):fields.notes,presetId:preset?.id??null};
+          const bean={...old,...fields,notes:input.notes===undefined?(old.notes??''):fields.notes,presetId:preset?.id??null,...(old.status==='archived'&&finishedReason!==undefined?{finishedReason}:{})};
           if(id) store.put(bean);else store.add(bean);done(bean);
         };
-        if(!id)save({id:crypto.randomUUID(),createdAt:new Date().toISOString(),status:'active',finishedAt:null,openedDate:null});
+        if(!id)save({id:crypto.randomUUID(),createdAt:new Date().toISOString(),status:'active',finishedAt:null,finishedReason:null,openedDate:null});
         else {const r=store.get(id);r.onsuccess=()=>{if(!r.result)fail(new Error('この豆は見つかりません。'));else save(r.result);};}
       };
     });
@@ -85,7 +86,7 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
     listPresets:()=>transact(['presets'],'readonly',(tx,done)=>{tx.objectStore('presets').getAll().onsuccess=e=>done(sortPresets(e.target.result));}),
     add:input=>saveBean(null,input),edit:saveBean,
     setOpened:(id,value)=>mutate(id,bean=>({...bean,openedDate:validateOpened(value,bean.roastDate)})),
-    finish:id=>mutate(id,bean=>bean.status==='archived'?bean:{...bean,status:'archived',finishedAt:new Date().toISOString()}),
+    finish:(id,reason='consumed')=>mutate(id,bean=>bean.status==='archived'?bean:{...bean,status:'archived',finishedAt:new Date().toISOString(),finishedReason:validateFinishReason(reason)}),
     remove:id=>mutate(id,bean=>{if(bean.status!=='archived')throw new Error('在庫の豆は完全削除できません。');return null;}),
     async savePreset(id,value){
       const name=typeof value==='string'?value.trim():'';

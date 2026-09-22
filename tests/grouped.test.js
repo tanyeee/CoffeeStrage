@@ -20,8 +20,14 @@ test('manual order survives reconnect and JSON restore, groups sort presets then
  const order=(await repo.listPresets()).map(x=>x.id);order.splice(order.indexOf(q.id),1);order.unshift(q.id);await repo.reorderPresets(order);
  await assert.rejects(repo.reorderPresets([q.id,q.id]));await repo.close();assert.equal((await repo.listPresets())[0].id,q.id);
  const snap=await repo.snapshot();const groups=groupBeans(snap.beans,snap.presets);assert.deepEqual(groups.map(g=>g.name),['B','A','自由入力']);assert.equal(groups[1].beans.length,2);assert.equal(groups[1].beans[0].roastDate,'2025-01-01');
- const backup=parseBackup(serializeBackup(snap));assert.equal(backup.schemaVersion,4);await repo.replace(backup);assert.deepEqual(await repo.snapshot(),snap);
+ const backup=parseBackup(serializeBackup(snap));assert.equal(backup.schemaVersion,5);await repo.replace(backup);assert.deepEqual(await repo.snapshot(),snap);
  const bad=structuredClone(backup);bad.beans[0].presetId=crypto.randomUUID();await assert.rejects(repo.replace(bad));assert.deepEqual(await repo.snapshot(),snap);await repo.close();
+});
+test('archived groups keep preset order and sort bags by latest finish first',()=>{
+ const presets=[{id:'a',name:'A',order:1},{id:'b',name:'B',order:0}];
+ const bean=(id,name,presetId,roastDate,finishedAt)=>({...input,id,name,presetId,roastDate,createdAt:'2025-01-01T00:00:00Z',status:'archived',finishedAt,finishedReason:'consumed',openedDate:null,notes:''});
+ const groups=groupBeans([bean('1','A','a','2024-01-01','2026-01-01T00:00:00Z'),bean('2','A','a','2025-01-01','2026-03-01T00:00:00Z'),bean('3','B','b','2025-06-01','2026-02-01T00:00:00Z')],presets,true);
+ assert.deepEqual(groups.map(group=>group.name),['B','A']);assert.deepEqual(groups[1].beans.map(bean=>bean.id),['2','1']);
 });
 test('old JSON upgrades legacy aliases and new order without losing records',async()=>{
  const id=crypto.randomUUID();const old={schemaVersion:1,exportedAt:'2026-09-17T00:00:00Z',presets:[{id,name:'エチオピア｜イルガチェフィー G1 ブナブナ'}],beans:[{...input,id:crypto.randomUUID(),name:'エチオピア イルガチェフィー G1 ブナブナ',createdAt:'2025-01-01T00:00:00Z',status:'active',finishedAt:null}]};

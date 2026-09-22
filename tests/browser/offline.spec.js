@@ -11,7 +11,7 @@ test('offline reload, CRUD, presets, backup and CSV work from the deployed subpa
  await page.getByRole('radio',{name:'2',exact:true}).check();await page.getByLabel('焙煎日',{exact:true}).fill('2025-01-01');await page.getByRole('button',{name:'登録',exact:true}).click();
  await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();await page.reload();await page.getByLabel('並び順').selectOption('oldest');await expect(page.locator('.bean-card')).toHaveCount(1);await page.locator('.bean-card').click();
  await page.getByRole('link',{name:'編集',exact:true}).click();await page.getByLabel('豆名',{exact:true}).fill('オフライン豆');await page.getByRole('button',{name:'保存',exact:true}).click();
- await page.getByRole('button',{name:'飲み終わり',exact:true}).click();await expect(page.getByText('飲み終わり日時',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'アーカイブへ移す',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'飲み切った',exact:true}).click();await expect(page.getByText('アーカイブ日時',{exact:true})).toBeVisible();
  await page.getByRole('link',{name:'設定',exact:true}).click();await expect(page.locator('[data-pwa-status]')).toContainText('準備ができました');
  for(const name of ['JSONを書き出す','CSVを書き出す']){const wait=page.waitForEvent('download');await page.getByRole('button',{name,exact:true}).click();expect((await wait).suggestedFilename()).toMatch(/\.(json|csv)$/);}
  await page.getByRole('link',{name:'プリセットを管理'}).click();await page.getByRole('button',{name:'＋ プリセットを追加',exact:true}).click();await page.getByLabel('プリセット名').fill('オフラインプリセット');await page.getByRole('button',{name:'追加',exact:true}).click();await expect(page.getByRole('button',{name:'オフラインプリセット',exact:true})).toBeVisible();

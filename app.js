@@ -9,10 +9,13 @@ import { validateBean, roastLabel, ValidationError } from './validation.js';
 const app = document.querySelector('#app'), nav = document.querySelector('#nav');
 const notice = document.querySelector('#notice');
 const repository = createRepository({ onBlocked: () => announce('別のCoffee Cellar画面を閉じてください。'), onVersionChange: () => announce('アプリが更新されました。画面を再読み込みしてください。') });
-let viewMode = 'grouped', disposeDrag = () => {};
-let filterMonths = 0, pendingBackup = null;
+let viewMode = 'grouped', archiveViewMode = 'grouped', disposeDrag = () => {};
+let filterMonths = 0, openedFilter = 'all', archivePeriod = 0, archiveBean = '', archiveReason = 'all';
+let inventoryQuery = '', archiveQuery = '', searchTimer, pendingBackup = null;
 const viewModes = [['grouped', '豆別'], ['oldest', '古い順'], ['newest', '新しい順']];
+const archiveViewModes = [['grouped', '豆別'], ['newest', '終了が新しい順'], ['oldest', '終了が古い順']];
 const filters = [[0, '全期間'], [1, '1ヶ月以上'], [6, '半年以上']];
+const finishReasons = {consumed:'飲み切った',gifted:'人に譲渡',discarded:'廃棄した'};
 let route = '', formBaseline = '', busy = false, renderId = 0, noticeTimer, midnightTimer;
 const scrollPositions = new Map();
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -65,31 +68,63 @@ function roast(bean) {
 function openedLabel(bean) { return bean.openedDate ? bean.openedDate === 'unknown' ? '不明' : dateLabel(bean.openedDate) : '未開封'; }
 function openedShort(bean) { return bean.openedDate ? bean.openedDate === 'unknown' ? '不明' : compactDate(bean.openedDate) : '未開封'; }
 function timeLabel(value) { return new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)); }
-function card(bean, archived) {
-  return link(`/beans/${bean.id}`, `<div class="bean-name">${escape(bean.name)}</div><div class="bean-age">${archived ? `飲み終わり <small>${escape(timeLabel(bean.finishedAt))}</small>` : age(bean)}</div><div class="bean-meta"><span>${roast(bean)}</span><span>焙煎日 ${dateLabel(bean.roastDate)}</span><span>開封 ${escape(openedLabel(bean))}</span></div>`, 'bean-card');
+function localDate(value) {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
-function groupCard(group) {
-  return `<section class="bean-group"><div class="group-title"><h2>${escape(group.name)}</h2><span>${group.beans.length}袋</span></div><div class="batch-labels" aria-hidden="true"><span></span><span>経過</span><span>焙煎度</span><span>焙煎日</span><span>開封</span><span></span></div>${group.beans.map((bean,i)=>link(`/beans/${bean.id}`,`<span class="batch-index">${i+1}.</span><span class="batch-age">${escape(ageLabel(bean.roastDate))}</span><span class="batch-roast" aria-label="焙煎度" title="${escape(roastLabel(bean))}">${escape(bean.roastType==='scale'?bean.roastValue:bean.roastCustom)}</span><time datetime="${bean.roastDate}">${compactDate(bean.roastDate)}</time><span class="batch-opened${bean.openedDate?'':' unopened'}" aria-label="開封">${escape(openedShort(bean))}</span><span aria-hidden="true">›</span>`,'batch-row')).join('')}</section>`;
+function matchesSearch(bean, query) {
+  const needle=query.normalize('NFKC').toLocaleLowerCase('ja');
+  return !needle||`${bean.name}\n${bean.notes||''}`.normalize('NFKC').toLocaleLowerCase('ja').includes(needle);
+}
+function finishedWithin(bean, months) {
+  if(!months)return true;
+  const cutoff=new Date(),day=cutoff.getDate();cutoff.setDate(1);cutoff.setMonth(cutoff.getMonth()-months);cutoff.setDate(Math.min(day,new Date(cutoff.getFullYear(),cutoff.getMonth()+1,0).getDate()));
+  return new Date(bean.finishedAt)>=cutoff;
+}
+function finishReasonLabel(bean) {return bean.finishedReason?finishReasons[bean.finishedReason]:'未記録';}
+function card(bean, archived) {
+  return link(`/beans/${bean.id}`, `<div class="bean-name">${escape(bean.name)}</div><div class="bean-age">${archived ? `アーカイブ <small>${escape(timeLabel(bean.finishedAt))}</small>` : age(bean)}</div><div class="bean-meta"><span>${roast(bean)}</span><span>焙煎日 ${dateLabel(bean.roastDate)}</span><span>開封 ${escape(openedLabel(bean))}</span></div>`, 'bean-card');
+}
+function groupCard(group, archived = false) {
+  const rows=group.beans.map((bean,i)=>{
+    const finishedDate=archived?localDate(bean.finishedAt):null;
+    const period=ageLabel(bean.roastDate,finishedDate||today());
+    const last=archived?compactDate(finishedDate):openedShort(bean);
+    return link(`/beans/${bean.id}`,`<span class="batch-index">${i+1}.</span><span class="batch-age">${escape(period)}</span><span class="batch-roast" aria-label="焙煎度" title="${escape(roastLabel(bean))}">${escape(bean.roastType==='scale'?bean.roastValue:bean.roastCustom)}</span><time datetime="${bean.roastDate}">${compactDate(bean.roastDate)}</time><span class="batch-opened${!archived&&!bean.openedDate?' unopened':''}" aria-label="${archived?'アーカイブ日':'開封'}">${escape(last)}</span><span aria-hidden="true">›</span>`,'batch-row');
+  }).join('');
+  return `<section class="bean-group"><div class="group-title"><h2>${escape(group.name)}</h2><span>${group.beans.length}袋</span></div><div class="batch-labels" aria-hidden="true"><span></span><span>${archived?'保管':'経過'}</span><span>焙煎度</span><span>焙煎日</span><span>${archived?'終了日':'開封'}</span><span></span></div>${rows}</section>`;
 }
 function listView(beans, archived, presets = []) {
   const total = beans.filter(b => b.status === (archived ? 'archived' : 'active'));
-  const collection = sortBeans(total.filter(b => archived || !filterMonths || elapsedMonths(b.roastDate) >= filterMonths), archived);
-  if(!archived && viewMode==='newest')collection.reverse();
+  const query=archived?archiveQuery:inventoryQuery,mode=archived?archiveViewMode:viewMode;
+  const names=groupBeans(total,presets).map(group=>group.name);
+  if(archived&&archiveBean&&!names.includes(archiveBean))archiveBean='';
+  const filtered=total.filter(bean=>matchesSearch(bean,query)&&(archived
+    ? (!archiveBean||bean.name===archiveBean)&&finishedWithin(bean,archivePeriod)&&(archiveReason==='all'||(archiveReason==='unknown'?!bean.finishedReason:bean.finishedReason===archiveReason))
+    : (!filterMonths||elapsedMonths(bean.roastDate)>=filterMonths)&&(openedFilter==='all'||(openedFilter==='opened'?bean.openedDate!==null:bean.openedDate===null))));
+  const collection=sortBeans(filtered,archived);
+  if((!archived&&mode==='newest')||(archived&&mode==='oldest'))collection.reverse();
+  const activeFilters=Boolean(query||(archived?(archiveBean||archivePeriod||archiveReason!=='all'):(filterMonths||openedFilter!=='all')));
+  const viewOptions=(archived?archiveViewModes:viewModes).map(([value,label])=>`<option value="${value}" ${mode===value?'selected':''}>${label}</option>`).join('');
+  const search=`<div class="list-search"><label class="visually-hidden" for="list-search">豆名・備考を検索</label><input id="list-search" type="search" enterkeyhint="search" placeholder="豆名・備考を検索" value="${escape(query)}"></div>`;
+  const controls=archived
+    ? `<div class="archive-filters"><select id="archive-bean" aria-label="豆を選択"><option value="">すべての豆</option>${names.map(name=>`<option value="${escape(name)}" ${archiveBean===name?'selected':''}>${escape(name)}</option>`).join('')}</select><select id="archive-period" aria-label="終了期間"><option value="0" ${!archivePeriod?'selected':''}>期間：全て</option><option value="3" ${archivePeriod===3?'selected':''}>直近3ヶ月</option><option value="12" ${archivePeriod===12?'selected':''}>1年以内</option></select><select id="archive-reason" aria-label="終了区分"><option value="all" ${archiveReason==='all'?'selected':''}>区分：全て</option><option value="consumed" ${archiveReason==='consumed'?'selected':''}>飲み切り</option><option value="gifted" ${archiveReason==='gifted'?'selected':''}>譲渡</option><option value="discarded" ${archiveReason==='discarded'?'selected':''}>廃棄</option><option value="unknown" ${archiveReason==='unknown'?'selected':''}>未記録</option></select></div><div class="list-controls archive-controls"><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewOptions}</select></label></div>`
+    : `<div class="list-controls"><div class="filters" role="group" aria-label="保管期間">${filters.map(([months,label])=>`<button class="secondary" data-filter="${months}" aria-pressed="${filterMonths===months}">${label}</button>`).join('')}</div><div class="filter-selects"><select id="opened-filter" aria-label="開封状態"><option value="all" ${openedFilter==='all'?'selected':''}>すべての開封状態</option><option value="unopened" ${openedFilter==='unopened'?'selected':''}>未開封</option><option value="opened" ${openedFilter==='opened'?'selected':''}>開封済み</option></select><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewOptions}</select></label></div></div>`;
   navigation(archived ? 'archive' : 'inventory');
-  app.innerHTML = heading(archived ? '飲み終わった豆' : '現在の貯蔵数', archived ? 'YOUR COFFEE HISTORY' : 'IN YOUR CELLAR', `<span class="count"><strong>${total.length}</strong>袋</span>`)
-    + (archived ? '' : `<div class="list-controls"><div class="filters" role="group" aria-label="保管期間">${filters.map(([months,label])=>`<button class="secondary" data-filter="${months}" aria-pressed="${filterMonths===months}">${label}</button>`).join('')}</div><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewModes.map(([mode,label])=>`<option value="${mode}" ${viewMode===mode?'selected':''}>${label}</option>`).join('')}</select></label></div>${filterMonths?`<p class="hint">該当 ${collection.length} / ${total.length}袋 · ${filters.find(([m])=>m===filterMonths)[1]}</p>`:''}`)
-    + (collection.length ? `<div class="bean-list">${!archived&&viewMode==='grouped'?groupBeans(collection,presets).map(groupCard).join(''):collection.map(bean => card(bean, archived)).join('')}</div>`
-      : `<section class="empty"><span class="empty-symbol" aria-hidden="true">◒</span><h2>${archived ? 'まだ履歴はありません' : filterMonths ? 'この期間の豆はありません' : '最初のひと袋を、セラーへ。'}</h2><p>${archived ? '飲み終わった豆は、ここに記録として残ります。' : filterMonths ? '「すべて」を選ぶと全在庫を表示します。' : '豆の名前と焙煎日を記録して、熟成の時間を見守りましょう。'}</p>${archived ? '' : link('/beans/new', '＋ 豆を追加', 'button primary')}</section>`)
+  app.innerHTML = heading(archived ? 'アーカイブ' : '現在の貯蔵数', archived ? 'YOUR COFFEE HISTORY' : 'IN YOUR CELLAR', `<span class="count"><strong>${total.length}</strong>袋</span>`)
+    + search+controls+(activeFilters?`<p class="hint result-count">該当 ${collection.length} / ${total.length}袋</p>`:'')
+    + (collection.length ? `<div class="bean-list">${mode==='grouped'?groupBeans(collection,presets,archived).map(group=>groupCard(group,archived)).join(''):collection.map(bean => card(bean, archived)).join('')}</div>`
+      : `<section class="empty"><span class="empty-symbol" aria-hidden="true">◒</span><h2>${total.length&&activeFilters?'条件に合う豆はありません':archived?'まだ履歴はありません':'最初のひと袋を、セラーへ。'}</h2><p>${total.length&&activeFilters?'検索や絞り込みの条件を変えてください。':archived?'アーカイブした豆は、ここに記録として残ります。':'豆の名前と焙煎日を記録して、熟成の時間を見守りましょう。'}</p>${archived||total.length? '':link('/beans/new', '＋ 豆を追加', 'button primary')}</section>`)
     + (!archived && collection.length ? link('/beans/new', '<span aria-hidden="true">＋</span> 豆を追加', 'button primary add-bar') : '');
 }
 function detailView(bean) {
   const archived = bean.status === 'archived';
   navigation(archived ? 'archive' : 'inventory');
   app.innerHTML = link(archived ? '/archive' : '/inventory', `‹ ${archived ? 'アーカイブ' : '在庫'}に戻る`, 'back')
-    + `<div>${archived ? '<span class="badge">飲み終わった豆</span>' : ''}</div>` + heading(escape(bean.name), 'COFFEE DETAILS')
+    + `<div>${archived ? '<span class="badge">アーカイブ済み</span>' : ''}</div>` + heading(escape(bean.name), 'COFFEE DETAILS')
     + `<p class="detail-age">${age(bean, true)}</p><p class="hint">焙煎から現在まで</p><section class="panel"><dl class="detail-grid">`
-    + [['焙煎度', roastLabel(bean)], ['焙煎日', dateLabel(bean.roastDate)], ['開封日', openedLabel(bean)], ['登録日時', timeLabel(bean.createdAt)], ...(archived ? [['飲み終わり日時', timeLabel(bean.finishedAt)]] : [])].map(([label, value]) => `<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')
-    + `<div><dt>備考</dt><dd class="bean-notes">${escape(bean.notes || '未記入')}</dd></div></dl></section><div class="actions">${link(`/beans/${bean.id}/edit`, '編集', 'button secondary')}${archived ? '' : `<button id="open-action" class="secondary">${bean.openedDate ? '開封日を変更' : '開封'}</button>`}</div><div class="actions"><button id="bean-action" class="${archived ? 'danger' : 'primary'}">${archived ? '完全に削除' : '飲み終わり'}</button></div><p class="error" id="action-error" role="alert"></p>`;
+    + [['焙煎度', roastLabel(bean)], ['焙煎日', dateLabel(bean.roastDate)], ['開封日', openedLabel(bean)], ['登録日時', timeLabel(bean.createdAt)], ...(archived ? [['アーカイブ日時', timeLabel(bean.finishedAt)],['終了区分',finishReasonLabel(bean)]] : [])].map(([label, value]) => `<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')
+    + `<div><dt>備考</dt><dd class="bean-notes">${escape(bean.notes || '未記入')}</dd></div></dl></section><div class="actions">${link(`/beans/${bean.id}/edit`, '編集', 'button secondary')}${archived ? '' : `<button id="open-action" class="secondary">${bean.openedDate ? '開封日を変更' : '開封'}</button>`}</div><div class="actions"><button id="bean-action" class="${archived ? 'danger' : 'primary'}">${archived ? '完全に削除' : 'アーカイブへ移す'}</button></div><p class="error" id="action-error" role="alert"></p>`;
   document.querySelector('#open-action')?.addEventListener('click', async () => {
     if (busy) return;
     const value = await askOpened(bean);
@@ -103,17 +138,27 @@ function detailView(bean) {
   document.querySelector('#bean-action').onclick = async event => {
     if (busy) return;
     if (archived && !await confirmDelete(bean.name)) return;
+    const reason=archived?null:await askFinish();
+    if(!archived&&reason===undefined)return;
     busy = true; event.target.disabled = true;
     try {
-      if (archived) await repository.remove(bean.id); else await repository.finish(bean.id);
+      if (archived) await repository.remove(bean.id); else await repository.finish(bean.id,reason);
       busy = false;
-      announce(archived ? '豆を完全に削除しました。' : '飲み終わった豆に移しました。');
+      announce(archived ? '豆を完全に削除しました。' : `${finishReasons[reason]}としてアーカイブへ移しました。`);
       if (archived) go('/archive'); else await render();
     } catch (error) {
       document.querySelector('#action-error').textContent = `保存できませんでした。${error.message}`;
       event.target.disabled = false;
     } finally { busy = false; }
   };
+}
+function askFinish() {
+  const dialog=document.querySelector('#finish');
+  return new Promise(resolve=>{
+    dialog.returnValue='';
+    dialog.onclose=()=>resolve(dialog.returnValue==='cancel'||!dialog.returnValue?undefined:dialog.returnValue);
+    dialog.showModal();dialog.querySelector('[value="consumed"]').focus();
+  });
 }
 function askOpened(bean) {
   const dialog = document.querySelector('#opened'), input = dialog.querySelector('#opened-date');
@@ -148,6 +193,7 @@ function formView(bean, presets) {
     <div class="custom-field" id="custom-field" ${selected === 'custom' ? '' : 'hidden'}><label for="roastCustom">焙煎度の名前</label><input id="roastCustom" name="roastCustom" type="text" placeholder="例：中深煎り" value="${escape(bean?.roastCustom || '')}" aria-describedby="roastCustom-error"><p id="roastCustom-error" class="error"></p></div></fieldset>
     <div class="field"><label for="roastDate">焙煎日</label><input id="roastDate" name="roastDate" type="date" min="0001-01-01" max="${today()}" value="${bean?.roastDate || today()}" required aria-describedby="roastDate-error"><p id="roastDate-error" class="error"></p><p class="hint">袋に記載された焙煎日を入力してください。</p></div>
     <div class="field"><label for="notes">備考（任意）</label><textarea id="notes" name="notes" rows="4" placeholder="例：友人に譲った日、飲んだときの味の感想など" aria-describedby="notes-error"></textarea><p id="notes-error" class="error"></p></div>
+    ${bean?.status==='archived'?`<div class="field"><label for="finishedReason">終了区分</label><select id="finishedReason" name="finishedReason"><option value="" ${!bean.finishedReason?'selected':''}>未記録</option>${Object.entries(finishReasons).map(([value,label])=>`<option value="${value}" ${bean.finishedReason===value?'selected':''}>${label}</option>`).join('')}</select></div>`:''}
     <p id="form-error" class="error form-error" role="alert"></p><button class="primary full-width" type="submit">${bean ? '保存' : '登録'}</button></form>`;
   const form = document.querySelector('#bean-form');
   form.elements.notes.value = bean?.notes ?? '';
@@ -167,7 +213,7 @@ function formView(bean, presets) {
     form.querySelectorAll('.error').forEach(node => { node.textContent = ''; });
     form.querySelectorAll('[aria-invalid]').forEach(node => node.removeAttribute('aria-invalid'));
     const values = new FormData(form), selection = values.get('roast');
-    const input = { name: values.get('name'), roastDate: values.get('roastDate'), roastType: selection === 'custom' ? 'custom' : selection ? 'scale' : '', roastValue: selection && selection !== 'custom' ? Number(selection) : null, roastCustom: values.get('roastCustom'), notes: values.get('notes') };
+    const input = { name: values.get('name'), roastDate: values.get('roastDate'), roastType: selection === 'custom' ? 'custom' : selection ? 'scale' : '', roastValue: selection && selection !== 'custom' ? Number(selection) : null, roastCustom: values.get('roastCustom'), notes: values.get('notes'), ...(bean?.status==='archived'?{finishedReason:values.get('finishedReason')||null}:{}) };
     const submit = form.querySelector('[type=submit]');
     try {
       validateBean(input);
@@ -332,7 +378,7 @@ function refresh() {
   const form = document.querySelector('#bean-form');
   if (form) { form.querySelector('[name=roastDate]').max = today(); return; }
   if (document.querySelector('#preset-form') || route === '/settings/restore' || route === '/settings') return;
-  if (!busy && !document.querySelector('#confirm').open) render({ preserve: true });
+  if (!busy && !document.querySelector('dialog[open]')) render({ preserve: true });
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 window.addEventListener('pageshow', event => { if (event.persisted) refresh(); });
@@ -346,9 +392,22 @@ app.addEventListener('click', event => {
   render({ preserve: true }).then(() => app.querySelector(`[data-filter="${filterMonths}"]`)?.focus({ preventScroll: true }));
 });
 app.addEventListener('change', event => {
-  if (event.target.id !== 'view-mode' || busy) return;
-  viewMode = event.target.value;
-  render({ preserve: true }).then(() => document.querySelector('#view-mode')?.focus({ preventScroll: true }));
+  if(busy)return;
+  const id=event.target.id;
+  if(id==='view-mode'){if(route==='/archive')archiveViewMode=event.target.value;else viewMode=event.target.value;}
+  else if(id==='opened-filter')openedFilter=event.target.value;
+  else if(id==='archive-bean')archiveBean=event.target.value;
+  else if(id==='archive-period')archivePeriod=Number(event.target.value);
+  else if(id==='archive-reason')archiveReason=event.target.value;
+  else return;
+  render({preserve:true}).then(()=>document.querySelector(`#${id}`)?.focus({preventScroll:true}));
+});
+app.addEventListener('input',event=>{
+  if(event.target.id!=='list-search'||event.isComposing||busy)return;
+  if(route==='/archive')archiveQuery=event.target.value;else inventoryQuery=event.target.value;
+  clearTimeout(searchTimer);searchTimer=setTimeout(()=>render({preserve:true}).then(()=>{
+    const input=document.querySelector('#list-search');input?.focus({preventScroll:true});input?.setSelectionRange(input.value.length,input.value.length);
+  }),150);
 });
 
 initializePWA();

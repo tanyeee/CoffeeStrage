@@ -26,18 +26,18 @@ export function upgradeSnapshot(snapshot, { seed = false, normalize = false } = 
   presets = sortPresets(presets).map((p,order)=>({...p,order}));
   const beans = snapshot.beans.map(bean=>{
     const preset = matchingPreset(bean.name,presets,true);
-    return {...bean, presetId:preset?.id ?? null, name:preset?.name ?? bean.name, openedDate:bean.openedDate ?? null, notes:bean.notes ?? ''};
+    return {...bean, presetId:preset?.id ?? null, name:preset?.name ?? bean.name, openedDate:bean.openedDate ?? null, notes:bean.notes ?? '', finishedReason:bean.status==='archived'?(bean.finishedReason??null):null};
   });
   return {beans,presets};
 }
-export function groupBeans(beans,presets) {
+export function groupBeans(beans,presets,archived=false) {
   const groups = new Map();
-  for(const bean of sortBeans(beans)) {
+  for(const bean of sortBeans(beans,archived)) {
     const preset = presets.find(p=>p.id===bean.presetId) || matchingPreset(bean.name,presets);
     const key = `name:${bean.name}`;
     if(!groups.has(key)) groups.set(key,{key,name:preset?.name ?? bean.name,presetId:preset?.id ?? null,beans:[]});
     groups.get(key).beans.push(bean);
   }
   const rank = new Map(sortPresets(presets).map((p,i)=>[p.id,i]));
-  return [...groups.values()].sort((a,b)=>(rank.get(a.presetId)??Infinity)-(rank.get(b.presetId)??Infinity) || a.beans[0].roastDate.localeCompare(b.beans[0].roastDate) || a.name.localeCompare(b.name,'ja'));
+  return [...groups.values()].sort((a,b)=>(rank.get(a.presetId)??Infinity)-(rank.get(b.presetId)??Infinity) || (archived?b.beans[0].finishedAt.localeCompare(a.beans[0].finishedAt):a.beans[0].roastDate.localeCompare(b.beans[0].roastDate)) || a.name.localeCompare(b.name,'ja'));
 }

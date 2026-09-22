@@ -72,7 +72,7 @@ test('opening a bag records a date, 不明 and a revert to 未開封',async({pag
  await expect(page.locator('.detail-grid')).toContainText('不明');
  await page.getByRole('button',{name:'開封日を変更'}).click();await page.getByRole('button',{name:'未開封に戻す'}).click();
  await expect(page.locator('.detail-grid')).toContainText('未開封');
- await page.getByRole('button',{name:'飲み終わり'}).click();
+ await page.getByRole('button',{name:'アーカイブへ移す'}).click();await page.getByRole('dialog').getByRole('button',{name:'飲み切った',exact:true}).click();
  await expect(page.getByRole('button',{name:'開封',exact:true})).toHaveCount(0);
  await page.screenshot({path:'test-results/opened-mobile.png',fullPage:true});
 });
