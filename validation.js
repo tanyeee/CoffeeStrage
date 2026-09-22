@@ -4,6 +4,8 @@ export class ValidationError extends Error {
 }
 export function validateBean(input, currentDate = today()) {
   const fields = {};
+  const notes = input.notes === undefined ? '' : input.notes;
+  if (typeof notes !== 'string') fields.notes = '備考は文字で入力してください。';
   const name = typeof input.name === 'string' ? input.name.trim() : '';
   if (!name) fields.name = '豆名を入力してください。';
   if (!parseDate(input.roastDate)) fields.roastDate = '正しい焙煎日を入力してください。';
@@ -15,7 +17,7 @@ export function validateBean(input, currentDate = today()) {
     if (!custom) fields.roastCustom = '焙煎度を入力してください。';
   } else fields.roast = '焙煎度を選んでください。';
   if (Object.keys(fields).length) throw new ValidationError(fields);
-  return { name, roastDate: input.roastDate, roastType: input.roastType,
+  return { name, notes, roastDate: input.roastDate, roastType: input.roastType,
     roastValue: input.roastType === 'scale' ? input.roastValue : null,
     roastCustom: input.roastType === 'custom' ? custom : null };
 }

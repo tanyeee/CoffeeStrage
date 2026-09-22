@@ -89,7 +89,7 @@ function detailView(bean) {
     + `<div>${archived ? '<span class="badge">飲み終わった豆</span>' : ''}</div>` + heading(escape(bean.name), 'COFFEE DETAILS')
     + `<p class="detail-age">${age(bean, true)}</p><p class="hint">焙煎から現在まで</p><section class="panel"><dl class="detail-grid">`
     + [['焙煎度', roastLabel(bean)], ['焙煎日', dateLabel(bean.roastDate)], ['開封日', openedLabel(bean)], ['登録日時', timeLabel(bean.createdAt)], ...(archived ? [['飲み終わり日時', timeLabel(bean.finishedAt)]] : [])].map(([label, value]) => `<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')
-    + `</dl></section><div class="actions">${link(`/beans/${bean.id}/edit`, '編集', 'button secondary')}${archived ? '' : `<button id="open-action" class="secondary">${bean.openedDate ? '開封日を変更' : '開封'}</button>`}</div><div class="actions"><button id="bean-action" class="${archived ? 'danger' : 'primary'}">${archived ? '完全に削除' : '飲み終わり'}</button></div><p class="error" id="action-error" role="alert"></p>`;
+    + `<div><dt>備考</dt><dd class="bean-notes">${escape(bean.notes || '未記入')}</dd></div></dl></section><div class="actions">${link(`/beans/${bean.id}/edit`, '編集', 'button secondary')}${archived ? '' : `<button id="open-action" class="secondary">${bean.openedDate ? '開封日を変更' : '開封'}</button>`}</div><div class="actions"><button id="bean-action" class="${archived ? 'danger' : 'primary'}">${archived ? '完全に削除' : '飲み終わり'}</button></div><p class="error" id="action-error" role="alert"></p>`;
   document.querySelector('#open-action')?.addEventListener('click', async () => {
     if (busy) return;
     const value = await askOpened(bean);
@@ -147,8 +147,10 @@ function formView(bean, presets) {
     <fieldset><legend>焙煎度</legend><div class="roast-options">${['1','2','3','4','5','custom'].map(value => `<label class="roast-option"><input type="radio" name="roast" value="${value}" ${selected === value ? 'checked' : ''} aria-describedby="roast-error"><span>${value === 'custom' ? 'その他' : value}</span></label>`).join('')}</div><p id="roast-error" class="error"></p>
     <div class="custom-field" id="custom-field" ${selected === 'custom' ? '' : 'hidden'}><label for="roastCustom">焙煎度の名前</label><input id="roastCustom" name="roastCustom" type="text" placeholder="例：中深煎り" value="${escape(bean?.roastCustom || '')}" aria-describedby="roastCustom-error"><p id="roastCustom-error" class="error"></p></div></fieldset>
     <div class="field"><label for="roastDate">焙煎日</label><input id="roastDate" name="roastDate" type="date" min="0001-01-01" max="${today()}" value="${bean?.roastDate || today()}" required aria-describedby="roastDate-error"><p id="roastDate-error" class="error"></p><p class="hint">袋に記載された焙煎日を入力してください。</p></div>
+    <div class="field"><label for="notes">備考（任意）</label><textarea id="notes" name="notes" rows="4" placeholder="例：友人に譲った日、飲んだときの味の感想など" aria-describedby="notes-error"></textarea><p id="notes-error" class="error"></p></div>
     <p id="form-error" class="error form-error" role="alert"></p><button class="primary full-width" type="submit">${bean ? '保存' : '登録'}</button></form>`;
   const form = document.querySelector('#bean-form');
+  form.elements.notes.value = bean?.notes ?? '';
   document.querySelector('#preset').onchange = event => {
     const preset = presets.find(item => item.id === event.target.value);
     if (preset) form.querySelector('#name').value = preset.name;
@@ -165,7 +167,7 @@ function formView(bean, presets) {
     form.querySelectorAll('.error').forEach(node => { node.textContent = ''; });
     form.querySelectorAll('[aria-invalid]').forEach(node => node.removeAttribute('aria-invalid'));
     const values = new FormData(form), selection = values.get('roast');
-    const input = { name: values.get('name'), roastDate: values.get('roastDate'), roastType: selection === 'custom' ? 'custom' : selection ? 'scale' : '', roastValue: selection && selection !== 'custom' ? Number(selection) : null, roastCustom: values.get('roastCustom') };
+    const input = { name: values.get('name'), roastDate: values.get('roastDate'), roastType: selection === 'custom' ? 'custom' : selection ? 'scale' : '', roastValue: selection && selection !== 'custom' ? Number(selection) : null, roastCustom: values.get('roastCustom'), notes: values.get('notes') };
     const submit = form.querySelector('[type=submit]');
     try {
       validateBean(input);

@@ -8,7 +8,7 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
     if(connection) return connection;
     connection = new Promise((resolve,reject)=>{
       if(!factory) return reject(new Error('このブラウザでは端末内保存を利用できません。'));
-      const request=factory.open(name,5);
+      const request=factory.open(name,6);
       request.onblocked=onBlocked;
       request.onupgradeneeded=event=>{
         const db=request.result, tx=request.transaction;
@@ -22,7 +22,11 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
         const migrate=()=>{
           if(--pending) return;
           try {
-            const data=upgradeSnapshot({beans:beans.result,presets:presets.result},{seed:event.oldVersion<2,normalize:event.oldVersion<3});
+            const snapshot={beans:beans.result,presets:presets.result};
+            const data=event.oldVersion<4
+              ? upgradeSnapshot(snapshot,{seed:event.oldVersion<2,normalize:event.oldVersion<3})
+              : snapshot;
+            data.beans=data.beans.map(bean=>({...bean,openedDate:bean.openedDate??null,notes:bean.notes??''}));
             for(const key of ['beans','presets']) for(const item of data[key]) tx.objectStore(key).put(item);
           } catch {tx.abort();}
         };
@@ -66,7 +70,7 @@ export function createRepository({ name = 'coffee-cellar', factory = globalThis.
       presets.onsuccess=()=>{
         const preset=matchingPreset(fields.name,presets.result);
         const save=old=>{
-          const bean={...old,...fields,presetId:preset?.id??null};
+          const bean={...old,...fields,notes:input.notes===undefined?(old.notes??''):fields.notes,presetId:preset?.id??null};
           if(id) store.put(bean);else store.add(bean);done(bean);
         };
         if(!id)save({id:crypto.randomUUID(),createdAt:new Date().toISOString(),status:'active',finishedAt:null,openedDate:null});

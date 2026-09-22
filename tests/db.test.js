@@ -116,5 +116,5 @@ test('a v2 backup restores as unopened bags',async()=>{
  const old={schemaVersion:2,exportedAt:'2026-09-17T00:00:00Z',presets:[{id:presetId,name:'A',order:0}],
   beans:[{...input,id,name:'Guji',createdAt:'2025-01-01T00:00:00Z',status:'active',finishedAt:null,presetId:null}]};
  const upgraded=parseBackup(JSON.stringify(old));
- assert.equal(upgraded.schemaVersion,3);assert.equal(upgraded.beans[0].openedDate,null);assert.equal(old.beans[0].openedDate,undefined);
+ assert.equal(upgraded.schemaVersion,4);assert.equal(upgraded.beans[0].openedDate,null);assert.equal(old.beans[0].openedDate,undefined);
 });

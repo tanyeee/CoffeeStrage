@@ -26,7 +26,7 @@ export function upgradeSnapshot(snapshot, { seed = false, normalize = false } = 
   presets = sortPresets(presets).map((p,order)=>({...p,order}));
   const beans = snapshot.beans.map(bean=>{
     const preset = matchingPreset(bean.name,presets,true);
-    return {...bean, presetId:preset?.id ?? null, name:preset?.name ?? bean.name, openedDate:bean.openedDate ?? null};
+    return {...bean, presetId:preset?.id ?? null, name:preset?.name ?? bean.name, openedDate:bean.openedDate ?? null, notes:bean.notes ?? ''};
   });
   return {beans,presets};
 }
