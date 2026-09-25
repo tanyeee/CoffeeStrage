@@ -6,7 +6,7 @@ async function add(repo,name,roastDate,notes='',openedDate=null){
  return bean;
 }
 
-test('inventory puts frequent opened filters first and keeps archive search',async({page})=>{
+test('inventory opened filters work alongside archive search',async({page})=>{
  await page.clock.install({time:new Date('2026-03-01T12:00:00+09:00')});await page.goto('/');
  await expect(page.locator('#inventory-count')).toContainText('現在の貯蔵数 0袋');
  await page.evaluate(async()=>{
@@ -67,7 +67,7 @@ test('archive groups beans and combines bean, period, reason and text filters',a
  await page.getByLabel('豆名・備考を検索').fill('');await page.getByLabel('並び順').selectOption('oldest');await expect(page.locator('.bean-card').first()).toContainText('2026/03/01');
  await page.getByLabel('並び順').selectOption('newest');await expect(page.locator('.bean-card').first()).toContainText('2026/09/17');
  await page.setViewportSize({width:320,height:720});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await page.getByLabel('並び順').selectOption('grouped');await expect(page.getByLabel('豆を選択')).toBeVisible();await page.screenshot({path:'test-results/archive-filters-mobile.png',fullPage:true});
+ await page.getByLabel('並び順').selectOption('grouped');await expect(page.locator('.bean-group')).toHaveCount(2);await expect(page.getByLabel('豆を選択')).toBeVisible();await page.screenshot({path:'test-results/archive-filters-mobile.png',fullPage:true});
  const beanBox=await page.getByLabel('豆を選択').boundingBox(),sortBox=await page.getByLabel('並び順').boundingBox();
  expect(beanBox.y).toBe(sortBox.y);expect(beanBox.x).toBeLessThan(sortBox.x);
 });
