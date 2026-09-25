@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 async function seed(page){
- await page.goto('/');await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();
+ await page.goto('/');await expect(page.getByRole('heading',{name:'在庫'})).toBeAttached();
  await page.evaluate(async()=>{
   const {createRepository}=await import('/db.js');const repo=createRepository();
   const a=await repo.savePreset(null,'エチオピア｜イルガチェフィー'),b=await repo.savePreset(null,'ケニア｜マサイ');

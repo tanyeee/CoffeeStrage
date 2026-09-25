@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 test('PWA manifest and icons resolve from a subpath deployment',async({page,request})=>{
   await page.goto('/_site/');
-  await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'在庫'})).toBeAttached();
   const manifestURL=await page.locator('link[rel=manifest]').evaluate(el=>el.href);
   const manifest=await (await request.get(manifestURL)).json();
   expect(manifest.display).toBe('standalone');expect(manifest.start_url).toBe('./');

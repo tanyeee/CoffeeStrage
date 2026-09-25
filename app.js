@@ -8,10 +8,11 @@ import { validateBean, roastLabel, ValidationError } from './validation.js';
 
 const app = document.querySelector('#app'), nav = document.querySelector('#nav');
 const notice = document.querySelector('#notice');
+const inventoryCount = document.querySelector('#inventory-count'), inventoryCountValue = document.querySelector('#inventory-count-value');
 const repository = createRepository({ onBlocked: () => announce('別のCoffee Cellar画面を閉じてください。'), onVersionChange: () => announce('アプリが更新されました。画面を再読み込みしてください。') });
 let viewMode = 'grouped', archiveViewMode = 'grouped', disposeDrag = () => {};
 let filterMonths = 0, openedFilter = 'all', archivePeriod = 0, archiveBean = '', archiveReason = 'all';
-let inventoryQuery = '', archiveQuery = '', searchTimer, pendingBackup = null;
+let archiveQuery = '', searchTimer, pendingBackup = null;
 const viewModes = [['grouped', '豆別'], ['oldest', '古い順'], ['newest', '新しい順']];
 const archiveViewModes = [['grouped', '豆別'], ['newest', '終了が新しい順'], ['oldest', '終了が古い順']];
 const filters = [[0, '全期間'], [1, '1ヶ月以上'], [6, '半年以上']];
@@ -27,6 +28,10 @@ const icons = {
 function announce(message) { clearTimeout(noticeTimer); notice.textContent = message; noticeTimer = setTimeout(() => { notice.textContent = ''; }, 5000); }
 function link(path, label, className = '') { return `<a href="#${path}" class="${className}">${label}</a>`; }
 function heading(label, english, right = '') { return `<p class="eyebrow">${english}</p><div class="title-row"><h1 tabindex="-1">${label}</h1>${right}</div>`; }
+function showInventoryCount(count) {
+  inventoryCount.hidden = count === null;
+  if (count !== null) inventoryCountValue.textContent = String(count);
+}
 function navigation(active, hidden = false) {
   nav.hidden = hidden;
   nav.innerHTML = ['inventory', 'archive', 'settings'].map((key, index) => `<a href="#/${key}" ${key === active ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg>${['在庫', 'アーカイブ', '設定'][index]}</a>`).join('');
@@ -96,7 +101,8 @@ function groupCard(group, archived = false) {
 }
 function listView(beans, archived, presets = []) {
   const total = beans.filter(b => b.status === (archived ? 'archived' : 'active'));
-  const query=archived?archiveQuery:inventoryQuery,mode=archived?archiveViewMode:viewMode;
+  const query=archived?archiveQuery:'',mode=archived?archiveViewMode:viewMode;
+  showInventoryCount(archived ? null : total.length);
   const names=groupBeans(total,presets).map(group=>group.name);
   if(archived&&archiveBean&&!names.includes(archiveBean))archiveBean='';
   const filtered=total.filter(bean=>matchesSearch(bean,query)&&(archived
@@ -106,13 +112,13 @@ function listView(beans, archived, presets = []) {
   if((!archived&&mode==='newest')||(archived&&mode==='oldest'))collection.reverse();
   const activeFilters=Boolean(query||(archived?(archiveBean||archivePeriod||archiveReason!=='all'):(filterMonths||openedFilter!=='all')));
   const viewOptions=(archived?archiveViewModes:viewModes).map(([value,label])=>`<option value="${value}" ${mode===value?'selected':''}>${label}</option>`).join('');
-  const search=`<div class="list-search${query?' has-query':''}"><label class="visually-hidden" for="list-search">豆名・備考を検索</label><input id="list-search" type="search" enterkeyhint="search" placeholder="検索" value="${escape(query)}"></div>`;
+  const search=archived?`<div class="list-search${query?' has-query':''}"><label class="visually-hidden" for="list-search">豆名・備考を検索</label><input id="list-search" type="search" enterkeyhint="search" placeholder="検索" value="${escape(query)}"></div>`:'';
   const controls=archived
     ? `<div class="archive-primary-controls"><select id="archive-bean" aria-label="豆を選択"><option value="">すべての豆</option>${names.map(name=>`<option value="${escape(name)}" ${archiveBean===name?'selected':''}>${escape(name)}</option>`).join('')}</select><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewOptions}</select></label></div><div class="archive-secondary-filters"><select id="archive-period" aria-label="終了期間"><option value="0" ${!archivePeriod?'selected':''}>期間：全て</option><option value="3" ${archivePeriod===3?'selected':''}>直近3ヶ月</option><option value="12" ${archivePeriod===12?'selected':''}>1年以内</option></select><select id="archive-reason" aria-label="終了区分"><option value="all" ${archiveReason==='all'?'selected':''}>区分：全て</option><option value="consumed" ${archiveReason==='consumed'?'selected':''}>飲み切り</option><option value="gifted" ${archiveReason==='gifted'?'selected':''}>譲渡</option><option value="discarded" ${archiveReason==='discarded'?'selected':''}>廃棄</option><option value="unknown" ${archiveReason==='unknown'?'selected':''}>未記録</option></select></div>`
-    : `<div class="list-controls inventory-controls"><div class="filters" role="group" aria-label="保管期間">${filters.map(([months,label])=>`<button class="secondary" data-filter="${months}" aria-pressed="${filterMonths===months}">${label}</button>`).join('')}</div><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewOptions}</select></label></div>`;
+    : `<div class="inventory-controls"><div class="opened-filters" role="group" aria-label="開封状態">${[['all','すべて'],['opened','開封'],['unopened','未開封']].map(([value,label])=>`<button type="button" class="secondary" data-opened-filter="${value}" aria-pressed="${openedFilter===value}">${label}</button>`).join('')}</div><label class="inventory-select"><span class="visually-hidden">期間</span><select id="inventory-period" aria-label="期間">${filters.map(([months,label])=>`<option value="${months}" ${filterMonths===months?'selected':''}>${label}</option>`).join('')}</select></label><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewOptions}</select></label></div>`;
   const header=archived
     ? `<div class="list-topline"><p class="eyebrow">YOUR COFFEE HISTORY</p>${search}</div><div class="title-row list-title"><h1 tabindex="-1">アーカイブ</h1><span class="count"><strong>${total.length}</strong>袋</span></div>`
-    : `<div class="list-topline"><p class="eyebrow">IN YOUR CELLAR</p>${search}</div><div class="inventory-heading"><div class="title-with-count"><h1 tabindex="-1">現在の貯蔵数</h1><span class="count"><strong>${total.length}</strong>袋</span></div><select id="opened-filter" aria-label="開封状態"><option value="all" ${openedFilter==='all'?'selected':''}>すべて</option><option value="unopened" ${openedFilter==='unopened'?'selected':''}>未開封</option><option value="opened" ${openedFilter==='opened'?'selected':''}>開封済</option></select></div>`;
+    : `<h1 class="visually-hidden" tabindex="-1">在庫</h1><div class="list-topline inventory-topline"><p class="eyebrow">IN YOUR CELLAR</p></div>`;
   navigation(archived ? 'archive' : 'inventory');
   app.innerHTML = header+controls+(activeFilters?`<p class="hint result-count">該当 ${collection.length} / ${total.length}袋</p>`:'')
     + (collection.length ? `<div class="bean-list">${mode==='grouped'?groupBeans(collection,presets,archived).map(group=>groupCard(group,archived)).join(''):collection.map(bean => card(bean, archived)).join('')}</div>`
@@ -330,6 +336,7 @@ async function render({ preserve = false } = {}) {
   const next = location.hash.slice(1) || '/inventory';
   if (route && next !== route) scrollPositions.set(route, window.scrollY);
   route = next;
+  if (next !== '/inventory') showInventoryCount(null);
   try {
     if (next === '/inventory' || next === '/archive') {
       const data = await repository.snapshot();
@@ -367,6 +374,7 @@ async function render({ preserve = false } = {}) {
     if (!preserve) { app.querySelector('h1')?.focus({ preventScroll: true }); window.scrollTo(0, scrollPositions.get(next) || 0); }
   } catch (error) {
     if (token !== renderId) return;
+    showInventoryCount(null);
     navigation('inventory');
     app.innerHTML = heading('セラーを開けませんでした', 'STORAGE ERROR') + `<section class="panel"><p>${escape(error.message)}</p><p class="settings-note">保存データは変更していません。ほかのCoffee Cellar画面を閉じてから、もう一度お試しください。</p><button class="primary" id="retry">再試行</button></section>`;
     document.querySelector('#retry').onclick = () => render();
@@ -388,16 +396,16 @@ if (!location.hash) history.replaceState(null, '', '#/inventory');
 refresh();
 
 app.addEventListener('click', event => {
-  const button = event.target.closest('[data-filter]');
-  if (!button || busy) return;
-  filterMonths = Number(button.dataset.filter);
-  render({ preserve: true }).then(() => app.querySelector(`[data-filter="${filterMonths}"]`)?.focus({ preventScroll: true }));
+  const openedButton = event.target.closest('[data-opened-filter]');
+  if (!openedButton || busy) return;
+  openedFilter = openedButton.dataset.openedFilter;
+  render({ preserve: true }).then(() => app.querySelector(`[data-opened-filter="${openedFilter}"]`)?.focus({ preventScroll: true }));
 });
 app.addEventListener('change', event => {
   if(busy)return;
   const id=event.target.id;
   if(id==='view-mode'){if(route==='/archive')archiveViewMode=event.target.value;else viewMode=event.target.value;}
-  else if(id==='opened-filter')openedFilter=event.target.value;
+  else if(id==='inventory-period')filterMonths=Number(event.target.value);
   else if(id==='archive-bean')archiveBean=event.target.value;
   else if(id==='archive-period')archivePeriod=Number(event.target.value);
   else if(id==='archive-reason')archiveReason=event.target.value;
@@ -405,8 +413,8 @@ app.addEventListener('change', event => {
   render({preserve:true}).then(()=>document.querySelector(`#${id}`)?.focus({preventScroll:true}));
 });
 app.addEventListener('input',event=>{
-  if(event.target.id!=='list-search'||event.isComposing||busy)return;
-  if(route==='/archive')archiveQuery=event.target.value;else inventoryQuery=event.target.value;
+  if(event.target.id!=='list-search'||route!=='/archive'||event.isComposing||busy)return;
+  archiveQuery=event.target.value;
   clearTimeout(searchTimer);searchTimer=setTimeout(()=>render({preserve:true}).then(()=>{
     const input=document.querySelector('#list-search');input?.focus({preventScroll:true});input?.setSelectionRange(input.value.length,input.value.length);
   }),150);

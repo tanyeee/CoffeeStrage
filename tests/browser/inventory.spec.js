@@ -7,7 +7,7 @@ async function add(page,name,date,custom=false) {
   if(custom) await page.getByLabel('焙煎度の名前').fill('中深煎り');
   await page.getByLabel('焙煎日',{exact:true}).fill(date);
   await page.getByRole('button',{name:'登録',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'在庫'})).toBeAttached();
 }
 test('phone-sized inventory lifecycle, persistence, cancellation, and safe rendering',async({page})=>{
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -35,7 +35,7 @@ test('phone-sized inventory lifecycle, persistence, cancellation, and safe rende
   await page.getByRole('dialog').getByRole('button',{name:'完全に削除'}).click();
   await expect(page.getByRole('heading',{name:'まだ履歴はありません'})).toBeVisible();
   await page.getByRole('link',{name:'在庫',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'在庫'})).toBeAttached();
   await page.getByLabel('並び順').selectOption('oldest');
   await expect(page.locator('.bean-card')).toHaveCount(1);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -53,7 +53,7 @@ test('validation and unsaved-change protection preserve the form',async({page})=
   await expect(page.getByLabel('豆名',{exact:true})).toHaveValue('保存前の豆');
   page.once('dialog',dialog=>dialog.accept());
   await page.getByRole('link',{name:'戻る'}).click();
-  await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'在庫'})).toBeAttached();
 });
 test('storage failure keeps entered data and never reports success',async({page})=>{
   await page.goto('/#/beans/new');
@@ -69,7 +69,7 @@ test('storage failure keeps entered data and never reports success',async({page}
 test('menu presets fill an editable name and the requested copy is shown',async({page})=>{
   await page.goto('/');
   await page.getByLabel('並び順').selectOption('oldest');
-  await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'在庫'})).toBeAttached();
   await expect(page.locator('.subtitle')).toHaveCount(0);
   await page.getByRole('link',{name:'豆を追加'}).click();
   await expect(page.locator('#preset option')).toHaveCount(10);

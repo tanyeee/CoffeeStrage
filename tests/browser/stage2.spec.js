@@ -1,7 +1,7 @@
 import { test,expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 async function seed(page){
- await page.clock.install({time:new Date('2026-09-17T12:00:00+09:00')});await page.goto('/');await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();
+ await page.clock.install({time:new Date('2026-09-17T12:00:00+09:00')});await page.goto('/');await expect(page.getByRole('heading',{name:'在庫'})).toBeAttached();
  await page.evaluate(async()=>{
   const {createRepository}=await import('/db.js');const repo=createRepository();
   for(const date of ['2026-09-17','2026-08-18','2026-08-17','2026-03-18','2026-03-17','2025-09-17']){await repo.add({name:`豆${date}`,roastType:'scale',roastValue:2,roastCustom:null,roastDate:date});}await repo.close();
@@ -10,7 +10,7 @@ async function seed(page){
 test('filter thresholds and preset CRUD leave stored bean names independent',async({page})=>{
  await seed(page);
  for(const [label,count] of [['1ヶ月以上',4],['半年以上',2],['全期間',6]]){
-  await page.getByRole('button',{name:label,exact:true}).click();await expect(page.locator('.bean-card')).toHaveCount(count);
+  await page.getByLabel('期間').selectOption({label});await expect(page.locator('.bean-card')).toHaveCount(count);
  }
  await page.getByRole('link',{name:'設定',exact:true}).click();await page.getByRole('link',{name:'プリセットを管理'}).click();
  await page.getByRole('button',{name:'＋ プリセットを追加',exact:true}).click();
@@ -33,6 +33,6 @@ test('JSON download, confirmation, full restore and invalid file rejection',asyn
  await page.locator('#import-json').setInputFiles({name:'backup.json',mimeType:'application/json',buffer:bytes});await page.getByRole('button',{name:'全データを置き換えて復元'}).click();await expect(page.getByRole('heading',{name:'設定',exact:true})).toBeVisible();
  await page.locator('#import-json').setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from('{')});await expect(page.getByRole('alert')).toContainText('JSONファイルを読み込めませんでした');
  await page.getByRole('link',{name:'在庫',exact:true}).click();await expect(page.locator('.bean-card')).toHaveCount(6);
- await page.getByRole('button',{name:'半年以上',exact:true}).click();await expect(page.locator('.bean-card')).toHaveCount(2);await expect(page.getByText('該当 2 / 6袋')).toBeVisible();
+ await page.getByLabel('期間').selectOption({label:'半年以上'});await expect(page.locator('.bean-card')).toHaveCount(2);await expect(page.getByText('該当 2 / 6袋')).toBeVisible();
  await page.screenshot({path:'test-results/stage2-mobile.png',fullPage:true});
 });

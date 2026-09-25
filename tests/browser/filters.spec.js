@@ -6,30 +6,42 @@ async function add(repo,name,roastDate,notes='',openedDate=null){
  return bean;
 }
 
-test('inventory searches names and notes and filters opened state',async({page})=>{
- await page.goto('/');
+test('inventory puts frequent opened filters first and keeps archive search',async({page})=>{
+ await page.clock.install({time:new Date('2026-03-01T12:00:00+09:00')});await page.goto('/');
+ await expect(page.locator('#inventory-count')).toContainText('現在の貯蔵数 0袋');
  await page.evaluate(async()=>{
   const {createRepository}=await import('/db.js');const repo=createRepository();
   await repo.add({name:'エチオピア｜花の豆',roastDate:'2025-01-01',roastType:'scale',roastValue:2,roastCustom:null,notes:'柑橘の香り'});
-  const opened=await repo.add({name:'ケニア｜甘い豆',roastDate:'2025-02-01',roastType:'scale',roastValue:3,roastCustom:null,notes:'友人と飲む'});await repo.setOpened(opened.id,'2025-02-10');await repo.close();
+  const opened=await repo.add({name:'ケニア｜甘い豆',roastDate:'2026-02-02',roastType:'scale',roastValue:3,roastCustom:null,notes:'友人と飲む'});await repo.setOpened(opened.id,'unknown');
+  await repo.add({name:'ブラジル｜未開封',roastDate:'2025-02-01',roastType:'scale',roastValue:3,roastCustom:null,notes:'ナッツの香り'});await repo.close();
  });await page.reload();
- await page.getByLabel('開封状態').selectOption('unopened');await expect(page.locator('.batch-row')).toHaveCount(1);await expect(page.locator('.bean-group')).toContainText('エチオピア');
- await page.getByLabel('開封状態').selectOption('opened');await expect(page.locator('.batch-row')).toHaveCount(1);await expect(page.locator('.bean-group')).toContainText('ケニア');
- await page.getByLabel('開封状態').selectOption('all');
- await expect(page.getByLabel('開封状態').locator('option')).toHaveText(['すべて','未開封','開封済']);
- await expect(page.getByLabel('豆名・備考を検索')).toHaveAttribute('placeholder','検索');
- const compactWidth=await page.locator('.list-search').evaluate(node=>node.getBoundingClientRect().width);
- await page.getByLabel('豆名・備考を検索').focus();
- await page.waitForTimeout(300);
- const expandedWidth=await page.locator('.list-search').evaluate(node=>node.getBoundingClientRect().width);
- expect(expandedWidth).toBeGreaterThan(compactWidth*1.5);
- await page.getByLabel('豆名・備考を検索').fill('友人');await expect(page.locator('.bean-group')).toHaveCount(1);await expect(page.locator('.bean-group')).toContainText('ケニア');
- await page.getByLabel('豆名・備考を検索').fill('存在しない');await expect(page.getByRole('heading',{name:'条件に合う豆はありません'})).toBeVisible();
- await page.getByLabel('豆名・備考を検索').fill('');await expect(page.locator('.bean-group')).toHaveCount(2);
+ await expect(page.getByRole('heading',{name:'在庫'})).toHaveCount(1);
+ await expect(page.locator('#inventory-count')).toBeVisible();await expect(page.locator('#inventory-count')).toContainText('現在の貯蔵数 3袋');
+ await expect(page.getByLabel('豆名・備考を検索')).toHaveCount(0);
+ await expect(page.locator('[data-opened-filter]')).toHaveText(['すべて','開封','未開封']);
+ await expect(page.locator('[data-opened-filter="all"]')).toHaveAttribute('aria-pressed','true');
+ await expect(page.getByLabel('期間').locator('option')).toHaveText(['全期間','1ヶ月以上','半年以上']);
+ await expect(page.getByLabel('並び順').locator('option')).toHaveText(['豆別','古い順','新しい順']);
+ await page.getByRole('button',{name:'開封',exact:true}).click();await expect(page.locator('.batch-row')).toHaveCount(1);await expect(page.locator('.bean-group')).toContainText('ケニア');
+ await page.getByRole('button',{name:'未開封',exact:true}).click();await expect(page.locator('.batch-row')).toHaveCount(2);
+ await page.getByRole('button',{name:'すべて',exact:true}).click();await expect(page.locator('.batch-row')).toHaveCount(3);
+ await page.getByLabel('期間').selectOption('1');await expect(page.locator('.batch-row')).toHaveCount(2);
+ await page.getByRole('button',{name:'開封',exact:true}).click();await expect(page.locator('.batch-row')).toHaveCount(0);
+ await expect(page.locator('.result-count')).toContainText('該当 0 / 3袋');
+ await page.getByLabel('期間').selectOption('0');await expect(page.locator('.batch-row')).toHaveCount(1);
+ await page.getByRole('button',{name:'すべて',exact:true}).click();await expect(page.locator('.batch-row')).toHaveCount(3);
  await page.setViewportSize({width:320,height:720});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- const titleBox=await page.getByRole('heading',{name:'現在の貯蔵数'}).boundingBox(),countBox=await page.locator('.title-with-count .count').boundingBox(),openedBox=await page.getByLabel('開封状態').boundingBox();
- expect(countBox.x).toBeGreaterThan(titleBox.x);expect(openedBox.x).toBeGreaterThan(countBox.x);
+ const countBox=await page.locator('#inventory-count').boundingBox(),brandBox=await page.locator('.brand-name').boundingBox();
+ expect(countBox.x).toBeGreaterThan(brandBox.x);expect(countBox.x+countBox.width).toBeLessThanOrEqual(320);
  await page.screenshot({path:'test-results/inventory-filters-mobile.png',fullPage:true});
+ await page.locator('.batch-row').first().click();await page.getByRole('button',{name:'アーカイブへ移す'}).click();
+ await page.getByRole('button',{name:'飲み切った',exact:true}).click();await expect(page.locator('#inventory-count')).toBeHidden();
+ await page.getByRole('link',{name:'在庫',exact:true}).click();await expect(page.locator('#inventory-count')).toContainText('現在の貯蔵数 2袋');
+ await page.getByRole('link',{name:'アーカイブ',exact:true}).click();
+ await expect(page.locator('#inventory-count')).toBeHidden();await expect(page.getByLabel('豆名・備考を検索')).toHaveAttribute('placeholder','検索');
+ await page.getByLabel('豆名・備考を検索').fill('田中');await expect(page.locator('.bean-group')).toHaveCount(0);
+ await page.getByLabel('豆名・備考を検索').fill('');await expect(page.locator('.bean-group')).toHaveCount(0);
+ await page.getByRole('link',{name:'設定',exact:true}).click();await expect(page.locator('#inventory-count')).toBeHidden();
 });
 
 test('archive groups beans and combines bean, period, reason and text filters',async({page})=>{

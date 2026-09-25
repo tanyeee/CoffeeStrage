@@ -6,10 +6,10 @@ async function ready(page){
 }
 test('offline reload, CRUD, presets, backup and CSV work from the deployed subpath',async({page,context})=>{
  await ready(page);await context.setOffline(true);await page.reload();
- await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'在庫'})).toBeAttached();
  await page.getByRole('link',{name:'豆を追加'}).click();await page.getByLabel('プリセットから選ぶ').selectOption({label:'エチオピア｜イルガチェフィー G1 ブナブナ'});
  await page.getByRole('radio',{name:'2',exact:true}).check();await page.getByLabel('焙煎日',{exact:true}).fill('2025-01-01');await page.getByRole('button',{name:'登録',exact:true}).click();
- await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();await page.reload();await page.getByLabel('並び順').selectOption('oldest');await expect(page.locator('.bean-card')).toHaveCount(1);await page.locator('.bean-card').click();
+ await expect(page.getByRole('heading',{name:'在庫'})).toBeAttached();await page.reload();await page.getByLabel('並び順').selectOption('oldest');await expect(page.locator('.bean-card')).toHaveCount(1);await page.locator('.bean-card').click();
  await page.getByRole('link',{name:'編集',exact:true}).click();await page.getByLabel('豆名',{exact:true}).fill('オフライン豆');await page.getByRole('button',{name:'保存',exact:true}).click();
  await page.getByRole('button',{name:'アーカイブへ移す',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'飲み切った',exact:true}).click();await expect(page.getByText('アーカイブ日時',{exact:true})).toBeVisible();
  await page.getByRole('link',{name:'設定',exact:true}).click();await expect(page.locator('[data-pwa-status]')).toContainText('準備ができました');
@@ -48,6 +48,6 @@ test('failed app-shell update retains the working offline release',async({page,c
   });
   expect(state).toBe('redundant');
   expect(await page.evaluate(async()=> (await caches.keys()).some(key=>key.endsWith('test-bad-release')))).toBe(false);
-  await context.setOffline(true);await page.reload();await expect(page.getByRole('heading',{name:'現在の貯蔵数'})).toBeVisible();
+  await context.setOffline(true);await page.reload();await expect(page.getByRole('heading',{name:'在庫'})).toBeAttached();
  }finally{await writeFile(path,original);}
 });
