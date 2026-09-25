@@ -115,7 +115,8 @@ function listView(beans, archived, presets = []) {
   const search=archived?`<div class="list-search${query?' has-query':''}"><label class="visually-hidden" for="list-search">豆名・備考を検索</label><input id="list-search" type="search" enterkeyhint="search" placeholder="検索" value="${escape(query)}"></div>`:'';
   const controls=archived
     ? `<div class="archive-primary-controls"><select id="archive-bean" aria-label="豆を選択"><option value="">すべての豆</option>${names.map(name=>`<option value="${escape(name)}" ${archiveBean===name?'selected':''}>${escape(name)}</option>`).join('')}</select><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewOptions}</select></label></div><div class="archive-secondary-filters"><select id="archive-period" aria-label="終了期間"><option value="0" ${!archivePeriod?'selected':''}>期間：全て</option><option value="3" ${archivePeriod===3?'selected':''}>直近3ヶ月</option><option value="12" ${archivePeriod===12?'selected':''}>1年以内</option></select><select id="archive-reason" aria-label="終了区分"><option value="all" ${archiveReason==='all'?'selected':''}>区分：全て</option><option value="consumed" ${archiveReason==='consumed'?'selected':''}>飲み切り</option><option value="gifted" ${archiveReason==='gifted'?'selected':''}>譲渡</option><option value="discarded" ${archiveReason==='discarded'?'selected':''}>廃棄</option><option value="unknown" ${archiveReason==='unknown'?'selected':''}>未記録</option></select></div>`
-    : `<div class="inventory-controls"><div class="opened-filters" role="group" aria-label="開封状態">${[['all','すべて'],['opened','開封'],['unopened','未開封']].map(([value,label])=>`<button type="button" class="secondary" data-opened-filter="${value}" aria-pressed="${openedFilter===value}">${label}</button>`).join('')}</div><label class="inventory-select"><span class="visually-hidden">期間</span><select id="inventory-period" aria-label="期間">${filters.map(([months,label])=>`<option value="${months}" ${filterMonths===months?'selected':''}>${label}</option>`).join('')}</select></label><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewOptions}</select></label></div>`;
+    : `<div class="inventory-controls" role="region" aria-label="在庫の操作"><div class="opened-filters" role="group" aria-label="開封状態">${[['all','すべて'],['opened','開封'],['unopened','未開封']].map(([value,label])=>`<button type="button" class="secondary" data-opened-filter="${value}" aria-pressed="${openedFilter===value}">${label}</button>`).join('')}</div><label class="inventory-select"><span class="visually-hidden">期間</span><select id="inventory-period" aria-label="期間">${filters.map(([months,label])=>`<option value="${months}" ${filterMonths===months?'selected':''}>${label}</option>`).join('')}</select></label><label class="view-select"><span class="visually-hidden">並び順</span><select id="view-mode">${viewOptions}</select></label></div>`;
+  app.classList.toggle('has-inventory-dock', !archived);
   const header=archived
     ? `<div class="list-topline"><p class="eyebrow">YOUR COFFEE HISTORY</p>${search}</div><div class="title-row list-title"><h1 tabindex="-1">アーカイブ</h1><span class="count"><strong>${total.length}</strong>袋</span></div>`
     : `<h1 class="visually-hidden" tabindex="-1">在庫</h1><div class="list-topline inventory-topline"><p class="eyebrow">IN YOUR CELLAR</p></div>`;
@@ -336,6 +337,7 @@ async function render({ preserve = false } = {}) {
   const next = location.hash.slice(1) || '/inventory';
   if (route && next !== route) scrollPositions.set(route, window.scrollY);
   route = next;
+  app.classList.remove('has-inventory-dock');
   if (next !== '/inventory') showInventoryCount(null);
   try {
     if (next === '/inventory' || next === '/archive') {
@@ -374,6 +376,7 @@ async function render({ preserve = false } = {}) {
     if (!preserve) { app.querySelector('h1')?.focus({ preventScroll: true }); window.scrollTo(0, scrollPositions.get(next) || 0); }
   } catch (error) {
     if (token !== renderId) return;
+    app.classList.remove('has-inventory-dock');
     showInventoryCount(null);
     navigation('inventory');
     app.innerHTML = heading('セラーを開けませんでした', 'STORAGE ERROR') + `<section class="panel"><p>${escape(error.message)}</p><p class="settings-note">保存データは変更していません。ほかのCoffee Cellar画面を閉じてから、もう一度お試しください。</p><button class="primary" id="retry">再試行</button></section>`;
