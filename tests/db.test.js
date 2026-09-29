@@ -116,7 +116,7 @@ test('a v2 backup restores as unopened bags',async()=>{
  const old={schemaVersion:2,exportedAt:'2026-09-17T00:00:00Z',presets:[{id:presetId,name:'A',order:0}],
   beans:[{...input,id,name:'Guji',createdAt:'2025-01-01T00:00:00Z',status:'active',finishedAt:null,presetId:null}]};
  const upgraded=parseBackup(JSON.stringify(old));
- assert.equal(upgraded.schemaVersion,5);assert.equal(upgraded.beans[0].openedDate,null);assert.equal(upgraded.beans[0].finishedReason,null);assert.equal(old.beans[0].openedDate,undefined);
+ assert.equal(upgraded.schemaVersion,6);assert.equal(upgraded.beans[0].openedDate,null);assert.equal(upgraded.beans[0].finishedReason,null);assert.equal(upgraded.beans[0].purchaseDate,null);assert.equal(old.beans[0].openedDate,undefined);
 });
 test('finish reasons are validated, persist and do not change after archiving',async()=>{
  const repo=make(),a=await repo.add(input),b=await repo.add(input);
@@ -132,4 +132,27 @@ test('v6 database migration adds an unknown finish reason without changing notes
  const db=await new Promise((resolve,reject)=>{const r=factory.open(name,6);r.onupgradeneeded=()=>{r.result.createObjectStore('beans',{keyPath:'id'});r.result.createObjectStore('presets',{keyPath:'id'}).createIndex('name','name',{unique:true});};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
  await new Promise((resolve,reject)=>{const tx=db.transaction('beans','readwrite');tx.objectStore('beans').add({...input,id,createdAt:'2025-05-12T00:00:00Z',status:'archived',finishedAt:'2026-09-01T00:00:00Z',presetId:null,openedDate:null,notes:'以前の備考'});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});db.close();
  const repo=createRepository({factory,name});const bean=await repo.get(id);assert.equal(bean.finishedReason,null);assert.equal(bean.notes,'以前の備考');await repo.close();
+});
+
+test('v7 migration adds recommendation defaults without changing existing beans and applies the blend roast limit',async()=>{
+ const factory=new IDBFactory(),name='recommendations-v7-migration',id=crypto.randomUUID(),presetId=crypto.randomUUID();
+ const old=await new Promise((resolve,reject)=>{const r=factory.open(name,7);r.onupgradeneeded=()=>{r.result.createObjectStore('beans',{keyPath:'id'}).createIndex('status','status');r.result.createObjectStore('presets',{keyPath:'id'}).createIndex('name','name',{unique:true});};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+ const original={...input,id,createdAt:'2025-05-12T00:00:00.000Z',status:'archived',finishedAt:'2026-09-20T00:00:00.000Z',presetId,openedDate:'unknown',notes:'before'};
+ await new Promise((resolve,reject)=>{const tx=old.transaction(['beans','presets'],'readwrite');tx.objectStore('beans').put(original);tx.objectStore('presets').put({id:presetId,name:'ブレンド｜フジタコーヒー',order:4});tx.objectStore('presets').put({id:'custom',name:'Custom',order:5});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});old.close();
+ const repo=createRepository({factory,name});
+ assert.deepEqual(await repo.get(id),{...original,purchaseDate:null,finishedReason:null});
+ assert.deepEqual(await repo.getRecommendationSettings(),{observationStartDate:null,leadDays:14});
+ const presets=await repo.listPresets();assert.deepEqual(presets.find(p=>p.id===presetId).allowedRoasts,[3]);assert.deepEqual(presets.find(p=>p.id==='custom').allowedRoasts,[1,2,3,4,5]);
+ await repo.savePreset(presetId,'焙煎設定を保った改名');await repo.reorderPresets(['custom',presetId]);
+ const renamed=(await repo.listPresets()).find(p=>p.id===presetId);assert.deepEqual(renamed.allowedRoasts,[3]);assert.equal(renamed.order,1);
+ await repo.close();
+});
+
+test('purchase date is optional, validates on write, and survives an edit that omits the field',async()=>{
+ const repo=make(),a=await repo.add(input);assert.equal(a.purchaseDate,null);
+ assert.equal((await repo.edit(a.id,{...input,purchaseDate:'2026-09-20'})).purchaseDate,'2026-09-20');
+ assert.equal((await repo.edit(a.id,input)).purchaseDate,'2026-09-20');
+ await assert.rejects(repo.edit(a.id,{...input,purchaseDate:'2026-09-30'}),/未来の購入日/);
+ await assert.rejects(repo.edit(a.id,{...input,purchaseDate:'2026-02-30'}),/正しい購入日/);
+ assert.equal((await repo.get(a.id)).purchaseDate,'2026-09-20');await repo.close();
 });

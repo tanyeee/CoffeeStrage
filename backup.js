@@ -1,6 +1,6 @@
 import { upgradeSnapshot } from './data.js';
 import { parseDate, ageDays, sortBeans, today } from './dates.js';
-import { validateBean, validateOpened, validateFinishReason, roastLabel } from './validation.js';
+import { validateBean, validateOpened, validateFinishReason, validatePurchaseDate, validateRecommendationSettings, validatePresetRecommendationSettings, roastLabel } from './validation.js';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function exact(object, keys) {
   if (!object || typeof object !== 'object' || Array.isArray(object) || Object.keys(object).length !== keys.length || keys.some(key => !Object.hasOwn(object,key))) throw new Error('バックアップの項目が正しくありません。');
@@ -15,12 +15,12 @@ function timestamp(value) {
   return normalized;
 }
 export function validateBackup(data) {
-  exact(data,['schemaVersion','exportedAt','beans','presets']);
-  if(![1,2,3,4,5].includes(data.schemaVersion)) throw new Error('対応していないバックアップ形式です。');
+  exact(data,data?.schemaVersion===6?['schemaVersion','exportedAt','beans','presets','recommendationSettings']:['schemaVersion','exportedAt','beans','presets']);
+  if(![1,2,3,4,5,6].includes(data.schemaVersion)) throw new Error('対応していないバックアップ形式です。');
   if(!Array.isArray(data.beans)||!Array.isArray(data.presets)) throw new Error('データ一覧が正しくありません。');
   const ids = new Set(), names = new Set();
   const beans=data.beans.map(bean=>{
-    exact(bean,['id','name','roastType','roastValue','roastCustom','roastDate','createdAt','status','finishedAt',...(data.schemaVersion>=2?['presetId']:[]),...(data.schemaVersion>=3?['openedDate']:[]),...(data.schemaVersion>=4?['notes']:[]),...(data.schemaVersion>=5?['finishedReason']:[])]);
+    exact(bean,['id','name','roastType','roastValue','roastCustom','roastDate','createdAt','status','finishedAt',...(data.schemaVersion>=2?['presetId']:[]),...(data.schemaVersion>=3?['openedDate']:[]),...(data.schemaVersion>=4?['notes']:[]),...(data.schemaVersion>=5?['finishedReason']:[]),...(data.schemaVersion>=6?['purchaseDate']:[])]);
     if(data.schemaVersion>=4&&typeof bean.notes!=='string')throw new Error('備考の値が正しくありません。');
     if(typeof bean.id!=='string'||!uuid.test(bean.id)||ids.has(bean.id.toLowerCase())) throw new Error('豆のIDが不正または重複しています。');
     ids.add(bean.id.toLowerCase());
@@ -29,15 +29,17 @@ export function validateBackup(data) {
     const finishedReason=data.schemaVersion>=5?bean.finishedReason:null;
     if(!['active','archived'].includes(bean.status) || (bean.status==='active' && (bean.finishedAt!==null||finishedReason!==null))) throw new Error('豆の状態が正しくありません。');
     if(bean.status==='archived'&&finishedReason!==null)validateFinishReason(finishedReason);
-    return {...bean,createdAt:timestamp(bean.createdAt),finishedAt:bean.status==='archived'?timestamp(bean.finishedAt):null,openedDate:data.schemaVersion>=3?validateOpened(bean.openedDate,bean.roastDate,'9999-12-31'):null,notes:fields.notes,finishedReason};
+    return {...bean,createdAt:timestamp(bean.createdAt),finishedAt:bean.status==='archived'?timestamp(bean.finishedAt):null,openedDate:data.schemaVersion>=3?validateOpened(bean.openedDate,bean.roastDate,'9999-12-31'):null,notes:fields.notes,finishedReason,purchaseDate:data.schemaVersion>=6?validatePurchaseDate(bean.purchaseDate,'9999-12-31'):null};
   });
   ids.clear();
   const presets=data.presets.map(preset=>{
-    exact(preset,['id','name',...(data.schemaVersion>=2?['order']:[])]);
+    exact(preset,['id','name',...(data.schemaVersion>=2?['order']:[]),...(data.schemaVersion>=6?['reserveBags','allowedRoasts']:[])]);
     if(data.schemaVersion>=2&&(!Number.isSafeInteger(preset.order)||preset.order<0))throw new Error('プリセットの順序が正しくありません。');
     if(typeof preset.id!=='string'||!uuid.test(preset.id)||ids.has(preset.id.toLowerCase())) throw new Error('プリセットのIDが不正または重複しています。');
     if(typeof preset.name!=='string'||!preset.name.trim()||preset.name!==preset.name.trim()||names.has(preset.name)) throw new Error('プリセット名が不正または重複しています。');
-    ids.add(preset.id.toLowerCase());names.add(preset.name);return {...preset};
+    ids.add(preset.id.toLowerCase());names.add(preset.name);
+    const settings=validatePresetRecommendationSettings(data.schemaVersion>=6?{reserveBags:preset.reserveBags,allowedRoasts:preset.allowedRoasts}:{reserveBags:0,allowedRoasts:preset.name==='ブレンド｜フジタコーヒー'||preset.name==='ブレンド フジタコーヒー'?[3]:[1,2,3,4,5]});
+    return {...preset,...settings};
   });
   let snapshot={beans,presets};
   if(data.schemaVersion===1) snapshot=upgradeSnapshot(snapshot);
@@ -49,13 +51,15 @@ export function validateBackup(data) {
       if(!preset||preset.name!==bean.name)throw new Error('豆とプリセットの紐付けが正しくありません。');
     }
   }
-  return {schemaVersion:5,exportedAt:timestamp(data.exportedAt),...snapshot};
+  if(data.schemaVersion>=6)exact(data.recommendationSettings,['observationStartDate','leadDays']);
+  const recommendationSettings=validateRecommendationSettings(data.schemaVersion>=6?data.recommendationSettings:{observationStartDate:null,leadDays:14},'9999-12-31');
+  return {schemaVersion:6,exportedAt:timestamp(data.exportedAt),...snapshot,recommendationSettings};
 }
 export function parseBackup(text) {
   let data;try {data=JSON.parse(text);} catch {throw new Error('JSONファイルを読み込めませんでした。');}
   return validateBackup(data);
 }
-export function serializeBackup(snapshot) {return JSON.stringify(validateBackup({schemaVersion:5,exportedAt:new Date().toISOString(),...snapshot}),null,2);}
+export function serializeBackup(snapshot) {return JSON.stringify(validateBackup({schemaVersion:6,exportedAt:new Date().toISOString(),...snapshot}),null,2);}
 export function counts(data) {return {active:data.beans.filter(b=>b.status==='active').length,archived:data.beans.filter(b=>b.status==='archived').length,presets:data.presets.length};}
 
 function csvCell(value, userText = false) {
@@ -64,10 +68,10 @@ function csvCell(value, userText = false) {
   return '"' + text.replaceAll('"', '""') + '"';
 }
 export function serializeCSV(beans, currentDate = today()) {
-  const rows = ['name,roast,roastDate,openedDate,ageDays,status,finishedAt,finishedReason,notes'];
+  const rows = ['name,roast,roastDate,openedDate,ageDays,status,finishedAt,finishedReason,notes,purchaseDate'];
   for (const bean of sortBeans(beans)) {
     rows.push([csvCell(bean.name,true), csvCell(roastLabel(bean),true), csvCell(bean.roastDate), csvCell(bean.openedDate),
-      String(ageDays(bean.roastDate,currentDate)), csvCell(bean.status), csvCell(bean.finishedAt), csvCell(bean.finishedReason), csvCell(bean.notes,true)].join(','));
+      String(ageDays(bean.roastDate,currentDate)), csvCell(bean.status), csvCell(bean.finishedAt), csvCell(bean.finishedReason), csvCell(bean.notes,true), csvCell(bean.purchaseDate)].join(','));
   }
   return '\uFEFF' + rows.join('\r\n') + '\r\n';
 }

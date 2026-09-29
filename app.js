@@ -5,6 +5,7 @@ import { parseBackup, serializeBackup, serializeCSV, counts } from './backup.js'
 import { createRepository } from './db.js';
 import { today, ageDays, elapsedMonths, ageLabel, dateLabel, compactDate, sortBeans } from './dates.js';
 import { validateBean, roastLabel, ValidationError } from './validation.js';
+import { recommendDiscoveries, recommendRestocks, seededRandom } from './recommendations.js';
 
 const app = document.querySelector('#app'), nav = document.querySelector('#nav');
 const notice = document.querySelector('#notice');
@@ -23,6 +24,7 @@ const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;
 const icons = {
   inventory: '<path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6"/>',
   archive: '<path d="M4 5h16v15H4zM8 2v6m8-6v6M4 10h16m-12 5 3 3 5-5"/>',
+  recommendations: '<path d="M12 3v18M4 12h16M5.5 5.5l13 13m0-13-13 13"/><circle cx="12" cy="12" r="3" fill="currentColor"/>',
   settings: '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="12" r="2" fill="currentColor"/><circle cx="9" cy="18" r="2" fill="currentColor"/>'
 };
 function announce(message) { clearTimeout(noticeTimer); notice.textContent = message; noticeTimer = setTimeout(() => { notice.textContent = ''; }, 5000); }
@@ -34,10 +36,11 @@ function showInventoryCount(count) {
 }
 function navigation(active, hidden = false) {
   nav.hidden = hidden;
-  nav.innerHTML = ['inventory', 'archive', 'settings'].map((key, index) => `<a href="#/${key}" ${key === active ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg>${['在庫', 'アーカイブ', '設定'][index]}</a>`).join('');
+  const tabs=[['inventory','在庫'],['archive','アーカイブ'],['recommendations','おすすめ'],['settings','設定']];
+  nav.innerHTML = tabs.map(([key,label]) => `<a href="#/${key}" ${key === active ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icons[key]}</svg>${label}</a>`).join('');
 }
 function formSnapshot() {
-  const form = document.querySelector('#bean-form, #preset-form');
+  const form = document.querySelector('#bean-form, #preset-form, #recommendation-settings-form');
   return form ? JSON.stringify([...new FormData(form)]) : '';
 }
 function dirty() { return Boolean(formBaseline && formBaseline !== formSnapshot()); }
@@ -137,7 +140,7 @@ function detailView(bean) {
   app.innerHTML = link(archived ? '/archive' : '/inventory', `‹ ${archived ? 'アーカイブ' : '在庫'}に戻る`, 'back')
     + `<div>${archived ? '<span class="badge">アーカイブ済み</span>' : ''}</div>` + heading(escape(bean.name), 'COFFEE DETAILS')
     + `<p class="detail-age">${age(bean, true)}</p><p class="hint">焙煎から現在まで</p><section class="panel"><dl class="detail-grid">`
-    + [['焙煎度', roastLabel(bean)], ['焙煎日', dateLabel(bean.roastDate)], ['開封日', openedLabel(bean)], ['登録日時', timeLabel(bean.createdAt)], ...(archived ? [['アーカイブ日時', timeLabel(bean.finishedAt)],['終了区分',finishReasonLabel(bean)]] : [])].map(([label, value]) => `<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')
+    + [['焙煎度', roastLabel(bean)], ['焙煎日', dateLabel(bean.roastDate)], ['購入日', bean.purchaseDate?dateLabel(bean.purchaseDate):'未記録'], ['開封日', openedLabel(bean)], ['登録日時', timeLabel(bean.createdAt)], ...(archived ? [['アーカイブ日時', timeLabel(bean.finishedAt)],['終了区分',finishReasonLabel(bean)]] : [])].map(([label, value]) => `<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`).join('')
     + `<div><dt>備考</dt><dd class="bean-notes">${escape(bean.notes || '未記入')}</dd></div></dl></section><div class="actions">${link(`/beans/${bean.id}/edit`, '編集', 'button secondary')}${archived ? '' : `<button id="open-action" class="secondary">${bean.openedDate ? '開封日を変更' : '開封'}</button>`}</div><div class="actions"><button id="bean-action" class="${archived ? 'danger' : 'primary'}">${archived ? '完全に削除' : 'アーカイブへ移す'}</button></div><p class="error" id="action-error" role="alert"></p>`;
   document.querySelector('#open-action')?.addEventListener('click', async () => {
     if (busy) return;
@@ -206,11 +209,13 @@ function formView(bean, presets) {
     <fieldset><legend>焙煎度</legend><div class="roast-options">${['1','2','3','4','5','custom'].map(value => `<label class="roast-option"><input type="radio" name="roast" value="${value}" ${selected === value ? 'checked' : ''} aria-describedby="roast-error"><span>${value === 'custom' ? 'その他' : value}</span></label>`).join('')}</div><p id="roast-error" class="error"></p>
     <div class="custom-field" id="custom-field" ${selected === 'custom' ? '' : 'hidden'}><label for="roastCustom">焙煎度の名前</label><input id="roastCustom" name="roastCustom" type="text" placeholder="例：中深煎り" value="${escape(bean?.roastCustom || '')}" aria-describedby="roastCustom-error"><p id="roastCustom-error" class="error"></p></div></fieldset>
     <div class="field"><label for="roastDate">焙煎日</label><input id="roastDate" name="roastDate" type="date" min="0001-01-01" max="${today()}" value="${bean?.roastDate || today()}" required aria-describedby="roastDate-error"><p id="roastDate-error" class="error"></p><p class="hint">袋に記載された焙煎日を入力してください。</p></div>
+    <div class="field"><label for="purchaseDate">購入日（任意）</label><div class="purchase-date-row"><input id="purchaseDate" name="purchaseDate" type="date" min="0001-01-01" max="${today()}" value="${escape(bean?.purchaseDate||'')}" aria-describedby="purchaseDate-error"><button type="button" id="purchase-today" class="secondary">今日</button></div><p id="purchaseDate-error" class="error"></p><p class="hint">以前から保管していた豆は空欄のままにできます。</p></div>
     <div class="field"><label for="notes">備考（任意）</label><textarea id="notes" name="notes" rows="4" placeholder="例：友人に譲った日、飲んだときの味の感想など" aria-describedby="notes-error"></textarea><p id="notes-error" class="error"></p></div>
     ${bean?.status==='archived'?`<div class="field"><label for="finishedReason">終了区分</label><select id="finishedReason" name="finishedReason"><option value="" ${!bean.finishedReason?'selected':''}>未記録</option>${Object.entries(finishReasons).map(([value,label])=>`<option value="${value}" ${bean.finishedReason===value?'selected':''}>${label}</option>`).join('')}</select></div>`:''}
     <p id="form-error" class="error form-error" role="alert"></p><button class="primary full-width" type="submit">${bean ? '保存' : '登録'}</button></form>`;
   const form = document.querySelector('#bean-form');
   form.elements.notes.value = bean?.notes ?? '';
+  document.querySelector('#purchase-today').onclick=()=>{form.elements.purchaseDate.value=today();form.elements.purchaseDate.dispatchEvent(new Event('input',{bubbles:true}));};
   document.querySelector('#preset').onchange = event => {
     const preset = presets.find(item => item.id === event.target.value);
     if (preset) form.querySelector('#name').value = preset.name;
@@ -227,7 +232,7 @@ function formView(bean, presets) {
     form.querySelectorAll('.error').forEach(node => { node.textContent = ''; });
     form.querySelectorAll('[aria-invalid]').forEach(node => node.removeAttribute('aria-invalid'));
     const values = new FormData(form), selection = values.get('roast');
-    const input = { name: values.get('name'), roastDate: values.get('roastDate'), roastType: selection === 'custom' ? 'custom' : selection ? 'scale' : '', roastValue: selection && selection !== 'custom' ? Number(selection) : null, roastCustom: values.get('roastCustom'), notes: values.get('notes'), ...(bean?.status==='archived'?{finishedReason:values.get('finishedReason')||null}:{}) };
+    const input = { name: values.get('name'), roastDate: values.get('roastDate'), purchaseDate:values.get('purchaseDate')||null, roastType: selection === 'custom' ? 'custom' : selection ? 'scale' : '', roastValue: selection && selection !== 'custom' ? Number(selection) : null, roastCustom: values.get('roastCustom'), notes: values.get('notes'), ...(bean?.status==='archived'?{finishedReason:values.get('finishedReason')||null}:{}) };
     const submit = form.querySelector('[type=submit]');
     try {
       validateBean(input);
@@ -275,7 +280,8 @@ async function runAction(button, operation, errorNode) {
 function settingsView() {
   navigation('settings');
   app.innerHTML = heading('設定', 'YOUR CELLAR')
-    + `<section class="panel"><h2>豆プリセット</h2><p class="settings-note">よく買う豆を登録して、入力を手軽に。</p>${link('/settings/presets','プリセットを管理','button secondary')}</section>
+    + `<section class="panel"><h2>おすすめ</h2><p class="settings-note">補充の目安と豆の組み合わせを調整します。</p>${link('/settings/recommendations','おすすめの設定','button secondary')}</section>
+    <section class="panel"><h2>豆プリセット</h2><p class="settings-note">よく買う豆を登録して、入力を手軽に。</p>${link('/settings/presets','プリセットを管理','button secondary')}</section>
     <section class="panel"><h2>バックアップと復元</h2><p class="settings-note">在庫・アーカイブ・プリセットをまとめてJSONに保存できます。</p><div class="actions"><button class="primary" id="export-json">JSONを書き出す</button><button class="secondary" id="export-csv">CSVを書き出す</button></div><div class="field"><label for="import-json">JSONから復元</label><input type="file" id="import-json" accept=".json,application/json"><p class="hint">読み込み後に内容を確認できます。復元すると全データが置き換わります。</p></div><p id="settings-error" class="error" role="alert"></p></section>
     <section class="panel"><h2>この端末に保存</h2><p class="settings-note">データはこの端末のブラウザ内に保存されます。別の端末へ移すときはJSONバックアップを使ってください。</p><p class="hint">期間フィルターは焙煎日から満了した月数で判定します（例：3月17日焙煎は9月17日から半年以上）。</p><p class="hint">ホーム画面に追加するには、Safariの共有メニューから「ホーム画面に追加」を選んでください。初回は通信可能な状態で開き、オフライン利用の準備完了を確認してください。</p><p class="hint" data-pwa-status role="status">${escape(pwaStatus)}</p></section>`;
   document.querySelector('#export-csv').onclick=event=>runAction(event.target,exportCSV,document.querySelector('#settings-error'));
@@ -288,6 +294,63 @@ function settingsView() {
       busy=false;go('/settings/restore');
     },document.querySelector('#settings-error')).finally(()=>{input.value='';});
   };
+}
+let discoveryFallback={date:'',count:0};
+function discoveryCounter(date){
+  try{const stored=JSON.parse(sessionStorage.getItem('coffee-cellar:discovery-refresh')||'null');return stored?.date===date&&Number.isSafeInteger(stored.count)?stored.count:0;}
+  catch{if(discoveryFallback.date!==date)discoveryFallback={date,count:0};return discoveryFallback.count;}
+}
+function advanceDiscoveryCounter(date){
+  const count=discoveryCounter(date)+1;
+  try{sessionStorage.setItem('coffee-cellar:discovery-refresh',JSON.stringify({date,count}));}
+  catch{discoveryFallback={date,count};}
+}
+function recommendationView(data){
+  navigation('recommendations');
+  const date=today(),restock=recommendRestocks(data.beans,data.presets,data.recommendationSettings,date),counter=discoveryCounter(date);
+  const discoveries=recommendDiscoveries(data.beans,data.presets,{random:seededRandom(`${date}:${counter}`)});
+  const restockContent=restock.recommendations.length?restock.recommendations.map(item=>{
+    const reasons=item.reasons.map(reason=>reason.type==='reserve'
+      ? `<p>未開封${reason.unopened}袋／目標${reason.target}袋。あと${reason.shortfall}袋で目標に届きます。</p>`
+      : `<p>直近${reason.days}日で${reason.consumed}袋消費／在庫${reason.stock}袋／在庫は約${Math.round(reason.estimatedDays)}日分</p>`).join('');
+    return `<article class="recommendation-card"><h3>${escape(item.name)}</h3>${reasons}</article>`;
+  }).join(''):'<p class="hint">現在、買い足し候補はありません。</p>';
+  let paceNote='';
+  if(restock.observation.futureStart)paceNote='<p class="hint" role="status">消費ペースの開始日が端末の日付より先です。端末の日付をご確認ください。</p>';
+  else if(!restock.observation.started)paceNote=`<p class="hint">消費ペースは未計測です。${link('/settings/recommendations','おすすめの設定から今日を開始できます')}。それまでは未開封の目標袋数で候補を表示します。</p>`;
+  else if(restock.accumulating.length)paceNote=`<p class="hint">${restock.accumulating.map(item=>`${escape(item.name)}：${item.days}日間で${item.consumed}袋`).join('／')}。30日以上・3袋以上の記録が貯まると消費ペースを表示します。</p>`;
+  const discoveryContent=discoveries.length?discoveries.map(item=>`<article class="recommendation-card discovery-card"><h3>${escape(item.name)} <span>焙煎度 ${item.roastValue}</span></h3><p>${escape(item.reason)}</p></article>`).join(''):'<p class="hint">現在おすすめできる新しい組み合わせはありません。</p>';
+  app.innerHTML=`<div class="recommendation-heading"><h1 tabindex="-1">おすすめ</h1></div>
+    <section class="recommendation-section"><h2>そろそろ買い足す</h2><p class="hint">手持ちの袋数と、記録された飲み切り履歴からの目安です。</p>${restockContent}${paceNote}<p class="hint">袋数からの目安です。開封中の残量は反映していません。</p></section>
+    <section class="recommendation-section"><div class="recommendation-section-title"><h2>新しい組み合わせ</h2><button id="refresh-discoveries" class="secondary">別の候補を見る</button></div><p class="hint">記録が少ない豆と焙煎度から選んでいます。</p>${discoveryContent}</section>
+    <section class="recommendation-footer">${link('/settings/recommendations','おすすめの設定','button secondary')}</section>`;
+  document.querySelector('#refresh-discoveries').onclick=event=>{if(busy)return;advanceDiscoveryCounter(date);render({preserve:true}).then(()=>document.querySelector('#refresh-discoveries')?.focus({preventScroll:true}));};
+}
+function recommendationSettingsView(data){
+  navigation('settings');
+  const settings=data.recommendationSettings||{observationStartDate:null,leadDays:14};
+  app.innerHTML=link('/recommendations','‹ おすすめに戻る','back')+'<div class="title-row"><h1 tabindex="-1">おすすめの設定</h1></div>'+
+    `<form id="recommendation-settings-form" class="recommendation-settings-form" novalidate>
+      <section class="panel"><h2>消費ペース</h2><p class="settings-note">過去の飲み切り記録から、豆ごとの補充時期を目安として表示します。開始後に飲み切った袋を続けてアーカイブしてください。</p>
+      <p class="tracking-status" role="status">${settings.observationStartDate?`記録開始日：${escape(dateLabel(settings.observationStartDate))}`:'まだ記録を開始していません。'}</p>
+      <input type="hidden" name="observationStartDate" value="${escape(settings.observationStartDate||'')}">
+      ${settings.observationStartDate?'':'<button type="button" class="secondary" id="start-observation">今日から記録を始める</button>'}
+      <div class="field recommendation-lead-days"><label for="lead-days">何日分以下になったら購入候補にするか</label><div class="lead-days-row"><input id="lead-days" name="leadDays" type="number" min="1" max="60" step="1" value="${settings.leadDays}" required><span>日分</span></div></div>
+      </section>
+      <section class="panel"><h2>豆ごとのおすすめ</h2><p class="settings-note">目標は未開封の袋数です。焙煎度のチェックを外すと、新しい組み合わせの候補から除外されます。</p>
+      ${data.presets.length?data.presets.map(preset=>`<details class="recommendation-preset"><summary>${escape(preset.name)}</summary><div class="recommendation-preset-fields"><label for="reserve-${escape(preset.id)}">未開封の目標袋数（0〜20）</label><input id="reserve-${escape(preset.id)}" name="reserve-${escape(preset.id)}" type="number" min="0" max="20" step="1" value="${preset.reserveBags??0}" required><fieldset class="recommendation-roasts"><legend>おすすめする焙煎度</legend><div class="roast-options">${[1,2,3,4,5].map(value=>`<label class="roast-option"><input type="checkbox" name="allowed-${escape(preset.id)}" value="${value}" ${(preset.allowedRoasts??[1,2,3,4,5]).includes(value)?'checked':''}><span>${value}</span></label>`).join('')}</div></fieldset></div></details>`).join(''):'<p class="hint">プリセットがありません。設定から豆プリセットを追加できます。</p>'}
+      </section>
+      <p id="recommendation-settings-error" class="error" role="alert"></p><button type="submit" class="primary full-width" id="save-recommendation-settings">おすすめ設定を保存</button>
+    </form>`;
+  const form=document.querySelector('#recommendation-settings-form');formBaseline=formSnapshot();
+  form.querySelector('#start-observation')?.addEventListener('click',event=>{form.elements.observationStartDate.value=today();event.currentTarget.textContent=`${dateLabel(today())}から記録します`;event.currentTarget.disabled=true;});
+  form.addEventListener('submit',event=>{
+    event.preventDefault();if(busy)return;
+    const values=new FormData(form),leadValue=values.get('leadDays'),leadDays=leadValue===''?NaN:Number(leadValue),observationStartDate=values.get('observationStartDate')||null,presetSettings={};
+    for(const preset of data.presets){const reserveValue=values.get(`reserve-${preset.id}`);presetSettings[preset.id]={reserveBags:reserveValue===''?NaN:Number(reserveValue),allowedRoasts:values.getAll(`allowed-${preset.id}`).map(Number)};}
+    const button=form.querySelector('[type="submit"]'),error=document.querySelector('#recommendation-settings-error');error.textContent='';
+    runAction(button,async()=>{await repository.saveRecommendationConfiguration({leadDays,observationStartDate},presetSettings);formBaseline='';announce('おすすめ設定を保存しました。');await render({preserve:true});},error);
+  });
 }
 function presetsView(presets) {
   navigation('settings');
@@ -350,7 +413,9 @@ async function render({ preserve = false } = {}) {
       if (token !== renderId) return;
       listView(data.beans, next === '/archive', data.presets);
     }
+    else if(next==='/recommendations') {const data=await repository.snapshot();if(token!==renderId)return;recommendationView(data);}
     else if (next === '/settings') { pendingBackup=null;settingsView(); }
+    else if(next==='/settings/recommendations') {const data=await repository.snapshot();if(token!==renderId)return;recommendationSettingsView(data);}
     else if (next === '/settings/presets') {
       const presets=await repository.listPresets();if(token!==renderId)return;presetsView(presets);
     }
@@ -395,7 +460,7 @@ function refresh() {
   midnightTimer = setTimeout(refresh, next - now);
   const form = document.querySelector('#bean-form');
   if (form) { form.querySelector('[name=roastDate]').max = today(); return; }
-  if (document.querySelector('#preset-form') || route === '/settings/restore' || route === '/settings') return;
+  if (document.querySelector('#preset-form, #recommendation-settings-form') || route === '/settings/restore' || route === '/settings') return;
   if (!busy && !document.querySelector('dialog[open]')) render({ preserve: true });
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });

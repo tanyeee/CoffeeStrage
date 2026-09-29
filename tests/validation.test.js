@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateBean, ValidationError } from '../validation.js';
+import { validateBean, validatePurchaseDate, validateRecommendationSettings, validatePresetRecommendationSettings, ValidationError } from '../validation.js';
 const input={name:' Guji ',roastType:'scale',roastValue:2,roastCustom:'unused',roastDate:'2026-09-17'};
 test('normalizes only editable fields and clears the inactive roast representation',()=>{
   const result=validateBean({...input,status:'archived',id:'injected'},'2026-09-17');
@@ -10,4 +10,12 @@ test('normalizes only editable fields and clears the inactive roast representati
 });
 test('rejects missing, invalid, and future inputs',()=>{
   for(const patch of [{name:'　 '},{roastDate:'2026-09-18'},{roastDate:'2026-02-30'},{roastType:''},{roastValue:0},{roastValue:6},{roastValue:2.5},{roastValue:'2'},{roastType:'custom',roastCustom:' '}]) assert.throws(()=>validateBean({...input,...patch},'2026-09-17'),ValidationError);
+});
+test('validates optional purchase dates and recommendation settings bounds',()=>{
+  assert.equal(validatePurchaseDate(null,'2026-09-29'),null);assert.equal(validatePurchaseDate('2026-09-28','2026-09-29'),'2026-09-28');
+  for(const value of ['2026-09-30','2026-02-30','today'])assert.throws(()=>validatePurchaseDate(value,'2026-09-29'));
+  assert.deepEqual(validateRecommendationSettings({observationStartDate:'2026-09-30',leadDays:14},'2026-09-29'),{observationStartDate:'2026-09-30',leadDays:14});
+  for(const value of [0,61,1.5,'14'])assert.throws(()=>validateRecommendationSettings({observationStartDate:null,leadDays:value},'2026-09-29'));
+  assert.deepEqual(validatePresetRecommendationSettings({reserveBags:2,allowedRoasts:[1,3]}),{reserveBags:2,allowedRoasts:[1,3]});
+  for(const value of [{reserveBags:21,allowedRoasts:[1]},{reserveBags:1.5,allowedRoasts:[1]},{reserveBags:0,allowedRoasts:[3,2]},{reserveBags:0,allowedRoasts:[1,1]},{reserveBags:0,allowedRoasts:[6]}])assert.throws(()=>validatePresetRecommendationSettings(value));
 });

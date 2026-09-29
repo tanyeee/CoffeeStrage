@@ -39,8 +39,8 @@ test('v5 migration only adds empty notes, preserving links, order, dates and lif
   };r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);
  });old.close();
  const repo=createRepository({factory,name});
- for(const bean of beans)assert.deepEqual(await repo.get(bean.id),{...bean,notes:'',finishedReason:null});
- assert.deepEqual(await repo.listPresets(),[preset]);await repo.close();
+ for(const bean of beans)assert.deepEqual(await repo.get(bean.id),{...bean,purchaseDate:null,notes:'',finishedReason:null});
+ assert.deepEqual(await repo.listPresets(),[{...preset,reserveBags:0,allowedRoasts:[1,2,3,4,5]}]);await repo.close();
  assert.equal((await repo.get(base.id)).notes,'');await repo.close();
 });
 
@@ -48,10 +48,10 @@ test('v1-v4 backups migrate missing fields without mutating the source',async()=
  const repo=createRepository({factory:new IDBFactory()});await repo.add(input);
  const latest=JSON.parse(serializeBackup(await repo.snapshot()));
  for(const version of [1,2,3,4]){
-  const old=structuredClone(latest);old.schemaVersion=version;
-  for(const bean of old.beans){delete bean.finishedReason;if(version<4)delete bean.notes;if(version<3)delete bean.openedDate;if(version<2)delete bean.presetId;}
-  if(version<2)for(const preset of old.presets)delete preset.order;
-  const migrated=parseBackup(JSON.stringify(old));assert.equal(migrated.schemaVersion,5);assert.equal(migrated.beans[0].notes,'');assert.equal(migrated.beans[0].finishedReason,null);
+  const old=structuredClone(latest);old.schemaVersion=version;delete old.recommendationSettings;
+  for(const bean of old.beans){delete bean.purchaseDate;delete bean.finishedReason;if(version<4)delete bean.notes;if(version<3)delete bean.openedDate;if(version<2)delete bean.presetId;}
+  for(const preset of old.presets){delete preset.reserveBags;delete preset.allowedRoasts;if(version<2)delete preset.order;}
+  const migrated=parseBackup(JSON.stringify(old));assert.equal(migrated.schemaVersion,6);assert.equal(migrated.beans[0].notes,'');assert.equal(migrated.beans[0].finishedReason,null);assert.equal(migrated.beans[0].purchaseDate,null);assert.deepEqual(migrated.recommendationSettings,{observationStartDate:null,leadDays:14});
   await repo.replace(migrated);assert.equal((await repo.list())[0].notes,'');
  }
  for(const value of [null,42,{},[]]){

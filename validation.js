@@ -34,4 +34,24 @@ export function validateFinishReason(value) {
   if (!FINISH_REASONS.includes(value)) throw new Error('終了区分が正しくありません。');
   return value;
 }
+export function validatePurchaseDate(value, currentDate = today()) {
+  if (value === null || value === undefined || value === '') return null;
+  if (!parseDate(value)) throw new Error('正しい購入日を入力してください。');
+  if (value > currentDate) throw new Error('未来の購入日は登録できません。');
+  return value;
+}
+export function validateRecommendationSettings(input, currentDate = today()) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('おすすめ設定が正しくありません。');
+  const { observationStartDate = null, leadDays = 14 } = input;
+  if (observationStartDate !== null && !parseDate(observationStartDate)) throw new Error('観測開始日が正しくありません。');
+  if (!Number.isSafeInteger(leadDays) || leadDays < 1 || leadDays > 60) throw new Error('購入候補を表示する日数は1〜60で入力してください。');
+  return { observationStartDate, leadDays };
+}
+export function validatePresetRecommendationSettings(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('プリセットのおすすめ設定が正しくありません。');
+  const { reserveBags = 0, allowedRoasts = [1,2,3,4,5] } = input;
+  if (!Number.isSafeInteger(reserveBags) || reserveBags < 0 || reserveBags > 20) throw new Error('未開封の目標袋数は0〜20で入力してください。');
+  if (!Array.isArray(allowedRoasts) || allowedRoasts.some(value => !Number.isInteger(value) || value < 1 || value > 5) || new Set(allowedRoasts).size !== allowedRoasts.length || allowedRoasts.some((value,index)=>index>0&&value<=allowedRoasts[index-1])) throw new Error('おすすめする焙煎度を確認してください。');
+  return { reserveBags, allowedRoasts: [...allowedRoasts] };
+}
 export function roastLabel(bean) { return bean.roastType === 'scale' ? `${bean.roastValue} / 5` : bean.roastCustom; }
