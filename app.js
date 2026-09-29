@@ -318,7 +318,6 @@ function recommendationView(data){
   let paceNote='';
   if(restock.observation.futureStart)paceNote='<p class="hint" role="status">消費ペースの開始日が端末の日付より先です。端末の日付をご確認ください。</p>';
   else if(!restock.observation.started)paceNote=`<p class="hint">消費ペースは未計測です。${link('/settings/recommendations','おすすめの設定から今日を開始できます')}。それまでは未開封の目標袋数で候補を表示します。</p>`;
-  else if(restock.accumulating.length)paceNote=`<p class="hint">${restock.accumulating.map(item=>`${escape(item.name)}：${item.days}日間で${item.consumed}袋`).join('／')}。30日以上・3袋以上の記録が貯まると消費ペースを表示します。</p>`;
   const discoveryContent=discoveries.length?discoveries.map(item=>`<article class="recommendation-card discovery-card"><h3>${escape(item.name)} <span>焙煎度 ${item.roastValue}</span></h3><p>${escape(item.reason)}</p></article>`).join(''):'<p class="hint">現在おすすめできる新しい組み合わせはありません。</p>';
   app.innerHTML=`<div class="recommendation-heading"><h1 tabindex="-1">おすすめ</h1></div>
     <section class="recommendation-section"><h2>そろそろ買い足す</h2><p class="hint">手持ちの袋数と、記録された飲み切り履歴からの目安です。</p>${restockContent}${paceNote}<p class="hint">袋数からの目安です。開封中の残量は反映していません。</p></section>
