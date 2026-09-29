@@ -20,7 +20,9 @@ test('observed beans with no completed bags are reported as accumulating data',(
 });
 
 test('pace needs 30 observed days and three consumed bags, excludes gifts and dates outside the window',()=>{
- const p=preset('p','ケニア'),ended=(id,reason,date)=>({...bean(id,'p','archived',2,'2026-01-02',reason,`${date}T02:00:00+09:00`)});
+ // Build each event at local noon so its intended calendar day stays stable
+ // when the test suite runs in a different machine timezone (for example CI's UTC).
+ const p=preset('p','ケニア'),ended=(id,reason,date)=>({...bean(id,'p','archived',2,'2026-01-02',reason,new Date(`${date}T12:00:00`).toISOString())});
  const stock=bean('stock','p');
  const enough=[ended('c1','consumed','2026-09-01'),ended('c2','consumed','2026-09-10'),ended('c3','consumed','2026-09-20'),ended('gift','gifted','2026-09-21'),ended('discard','discarded','2026-09-22'),ended('unknown',null,'2026-09-23')];
  const start='2026-08-31';
